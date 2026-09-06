@@ -1,6 +1,7 @@
 package com.example.utils
 
 import com.example.data.model.AppLanguage
+import com.example.data.model.PredefinedCities
 import com.example.data.model.PrayerType
 
 object AppStrings {
@@ -446,5 +447,83 @@ object AppStrings {
     fun offlineStreamingNotice(lang: AppLanguage): String = when (lang) {
         AppLanguage.ARABIC -> "⚡ يتم تحميل أصوات المؤذنين تلقائياً في الخلفية فور توفر الإنترنت لتعمل المواقيت وصوت الأذان بشكل كامل حتى عند إطفاء الإنترنت لاحقاً."
         AppLanguage.ENGLISH -> "⚡ Muezzin audios are automatically downloaded in the background so Adhan sounds work seamlessly even when offline later."
+    }
+
+    // GPS Status Messages & Localization
+    fun gpsStatusDisabled(lang: AppLanguage): String = when (lang) {
+        AppLanguage.ARABIC -> "خدمة GPS مغلقة، تم فتح إعدادات الهاتف لتفعيلها مباشرة..."
+        AppLanguage.ENGLISH -> "GPS service is disabled. Opened device settings to enable it..."
+    }
+
+    fun gpsStatusOpeningSettings(lang: AppLanguage): String = when (lang) {
+        AppLanguage.ARABIC -> "تم فتح إعدادات الموقع، يرجى تفعيل GPS لتحديد مكانك بدقة."
+        AppLanguage.ENGLISH -> "Location settings opened, please enable GPS to locate accurately."
+    }
+
+    fun gpsStatusLocating(lang: AppLanguage): String = when (lang) {
+        AppLanguage.ARABIC -> "جاري تحديد الموقع الدقيق عبر GPS والإنترنت..."
+        AppLanguage.ENGLISH -> "Locating precise position via GPS and network..."
+    }
+
+    fun gpsStatusDetermined(cityName: String, lang: AppLanguage): String = when (lang) {
+        AppLanguage.ARABIC -> "تم تحديد الموقع بنجاح: $cityName"
+        AppLanguage.ENGLISH -> "Location determined successfully: $cityName"
+    }
+
+    fun gpsStatusSetTo(cityName: String, lang: AppLanguage): String = when (lang) {
+        AppLanguage.ARABIC -> "تم تحديد الموقع على: $cityName"
+        AppLanguage.ENGLISH -> "Location set to: $cityName"
+    }
+
+    fun gpsToastEnable(lang: AppLanguage): String = when (lang) {
+        AppLanguage.ARABIC -> "يرجى تفعيل خدمة الموقع (GPS) في الهاتف"
+        AppLanguage.ENGLISH -> "Please enable Location service (GPS) on your phone"
+    }
+
+    fun translateGpsMessage(rawMessage: String?, lang: AppLanguage): String {
+        if (rawMessage.isNullOrBlank()) return ""
+        val isAr = lang == AppLanguage.ARABIC
+        if (isAr) {
+            return when {
+                rawMessage.contains("GPS service is disabled", ignoreCase = true) ||
+                rawMessage.contains("GPS service is turned off", ignoreCase = true) ->
+                    "خدمة GPS مغلقة، تم فتح إعدادات الهاتف لتفعيلها مباشرة..."
+                rawMessage.contains("Location settings opened", ignoreCase = true) ->
+                    "تم فتح إعدادات الموقع، يرجى تفعيل GPS لتحديد مكانك بدقة."
+                rawMessage.contains("Locating precise position", ignoreCase = true) ->
+                    "جاري تحديد الموقع الدقيق عبر GPS والإنترنت..."
+                rawMessage.startsWith("Location determined successfully:", ignoreCase = true) -> {
+                    val cityPart = rawMessage.substringAfter(":").trim()
+                    val cityObj = PredefinedCities.list.find { it.nameEn.equals(cityPart, ignoreCase = true) || it.nameAr == cityPart }
+                    "تم تحديد الموقع بنجاح: ${cityObj?.nameAr ?: cityPart}"
+                }
+                rawMessage.startsWith("Location set to:", ignoreCase = true) -> {
+                    val cityPart = rawMessage.substringAfter(":").trim()
+                    val cityObj = PredefinedCities.list.find { it.nameEn.equals(cityPart, ignoreCase = true) || it.nameAr == cityPart }
+                    "تم تحديد الموقع على: ${cityObj?.nameAr ?: cityPart}"
+                }
+                else -> rawMessage
+            }
+        } else {
+            return when {
+                rawMessage.contains("خدمة GPS مغلقة") ->
+                    "GPS service is disabled. Opened device settings to enable it..."
+                rawMessage.contains("تم فتح إعدادات الموقع") ->
+                    "Location settings opened, please enable GPS to locate accurately."
+                rawMessage.contains("جاري تحديد الموقع الدقيق") ->
+                    "Locating precise position via GPS and network..."
+                rawMessage.startsWith("تم تحديد الموقع بنجاح:") -> {
+                    val cityPart = rawMessage.substringAfter("تم تحديد الموقع بنجاح:").trim()
+                    val cityObj = PredefinedCities.list.find { it.nameAr == cityPart || it.nameEn.equals(cityPart, ignoreCase = true) }
+                    "Location determined successfully: ${cityObj?.nameEn ?: cityPart}"
+                }
+                rawMessage.startsWith("تم تحديد الموقع على:") -> {
+                    val cityPart = rawMessage.substringAfter("تم تحديد الموقع على:").trim()
+                    val cityObj = PredefinedCities.list.find { it.nameAr == cityPart || it.nameEn.equals(cityPart, ignoreCase = true) }
+                    "Location set to: ${cityObj?.nameEn ?: cityPart}"
+                }
+                else -> rawMessage
+            }
+        }
     }
 }

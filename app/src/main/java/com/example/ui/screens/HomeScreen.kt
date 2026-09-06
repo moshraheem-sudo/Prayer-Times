@@ -123,8 +123,8 @@ fun HomeScreen(
 
         // Beautiful Card with City Name, Refresh & GPS Buttons, & Integrated Hijri & Gregorian Dates
         item {
-            val hijriDisplay = PrayerCalculator.formatFullHijriDate(prayerData?.hijriDate)
-            val gregorianDisplay = prayerData?.gregorianDate?.takeIf { it.isNotBlank() } ?: PrayerCalculator.getFormattedGregorianDate()
+            val hijriDisplay = PrayerCalculator.formatFullHijriDate(prayerData?.hijriDate, currentLanguage)
+            val gregorianDisplay = PrayerCalculator.formatFullGregorianDate(prayerData?.gregorianDate, currentLanguage)
 
             Card(
                 modifier = Modifier
@@ -253,7 +253,7 @@ fun HomeScreen(
                     // GPS Status / feedback message if locating
                     if (gpsStatusMessage != null) {
                         Text(
-                            text = gpsStatusMessage,
+                            text = AppStrings.translateGpsMessage(gpsStatusMessage, currentLanguage),
                             style = MaterialTheme.typography.labelSmall,
                             color = AppColors.current.tealAccentLight,
                             fontSize = 11.sp,

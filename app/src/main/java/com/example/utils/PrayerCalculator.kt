@@ -234,21 +234,22 @@ object PrayerCalculator {
     }
 
     /**
-     * Formats Hijri Islamic date in Arabic with day offset (e.g. +1, -1)
+     * Formats Hijri Islamic date with day offset (e.g. +1, -1)
      */
-    fun getFormattedHijriDateWithOffset(date: Date = Date(), dayOffset: Int = 0): String {
-        if (dayOffset == 0) return getFormattedHijriDate(date)
+    fun getFormattedHijriDateWithOffset(date: Date = Date(), dayOffset: Int = 0, lang: AppLanguage = AppLanguage.ARABIC): String {
+        if (dayOffset == 0) return getFormattedHijriDate(date, lang)
         val cal = Calendar.getInstance().apply {
             time = date
             add(Calendar.DAY_OF_YEAR, dayOffset)
         }
-        return getFormattedHijriDate(cal.time)
+        return getFormattedHijriDate(cal.time, lang)
     }
 
     /**
-     * Formats Hijri Islamic date in Arabic (e.g., 23 ربيع الأول 1448 هـ)
+     * Formats Hijri Islamic date according to selected language
+     * (e.g., Arabic: 23 ربيع الأول 1448 هـ, English: 23 Rabi' al-Awwal 1448 AH)
      */
-    fun getFormattedHijriDate(date: Date = Date()): String {
+    fun getFormattedHijriDate(date: Date = Date(), lang: AppLanguage = AppLanguage.ARABIC): String {
         try {
             if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.N) {
                 val icuCalendar = android.icu.util.IslamicCalendar()
@@ -256,38 +257,117 @@ object PrayerCalculator {
                 val day = icuCalendar.get(android.icu.util.IslamicCalendar.DAY_OF_MONTH)
                 val month = icuCalendar.get(android.icu.util.IslamicCalendar.MONTH)
                 val year = icuCalendar.get(android.icu.util.IslamicCalendar.YEAR)
-                val monthsAr = arrayOf(
-                    "محرم الحرام", "صفر الخير", "ربيع الأول", "ربيع الثاني",
-                    "جمادى الأولى", "جمادى الآخرة", "رجب الأصب", "شعبان المعظم",
-                    "رمضان المبارك", "شوال المكرم", "ذو القعدة", "ذو الحجة"
-                )
-                val monthName = monthsAr.getOrElse(month) { "هجري" }
-                return "$day $monthName $year هـ"
+                return if (lang == AppLanguage.ARABIC) {
+                    val monthsAr = arrayOf(
+                        "محرم الحرام", "صفر الخير", "ربيع الأول", "ربيع الثاني",
+                        "جمادى الأولى", "جمادى الآخرة", "رجب الأصب", "شعبان المعظم",
+                        "رمضان المبارك", "شوال المكرم", "ذو القعدة", "ذو الحجة"
+                    )
+                    val monthName = monthsAr.getOrElse(month) { "هجري" }
+                    "$day $monthName $year هـ"
+                } else {
+                    val monthsEn = arrayOf(
+                        "Muharram", "Safar", "Rabi' al-Awwal", "Rabi' al-Thani",
+                        "Jumada al-Ula", "Jumada al-Thaniyah", "Rajab", "Sha'ban",
+                        "Ramadan", "Shawwal", "Dhu al-Qi'dah", "Dhu al-Hijjah"
+                    )
+                    val monthName = monthsEn.getOrElse(month) { "AH" }
+                    "$day $monthName $year AH"
+                }
             }
         } catch (_: Exception) {}
-        return "التقويم الهجري الشريف"
+        return if (lang == AppLanguage.ARABIC) "التقويم الهجري الشريف" else "Hijri Calendar"
     }
 
     /**
-     * Formats and ensures full Hijri Islamic date in Arabic with full month and year (e.g., 23 ربيع الأول 1448 هـ)
+     * Formats and ensures full Hijri Islamic date with full month and year according to language
+     * (e.g. 23 ربيع الأول 1448 هـ / 23 Rabi' al-Awwal 1448 AH)
      */
-    fun formatFullHijriDate(rawHijri: String? = null, date: Date = Date()): String {
+    fun formatFullHijriDate(rawHijri: String? = null, lang: AppLanguage = AppLanguage.ARABIC, date: Date = Date()): String {
         if (rawHijri.isNullOrBlank()) {
-            return getFormattedHijriDate(date)
+            return getFormattedHijriDate(date, lang)
         }
         val trimmed = rawHijri.trim()
-        if (trimmed.matches(Regex(".*\\d{4}.*"))) {
-            return if (!trimmed.endsWith("هـ") && !trimmed.endsWith("ه")) "$trimmed هـ" else trimmed
+        val arabicDate = if (trimmed.matches(Regex(".*\\d{4}.*"))) {
+            if (!trimmed.endsWith("هـ") && !trimmed.endsWith("ه")) "$trimmed هـ" else trimmed
+        } else {
+            var hijriYear = 1448
+            try {
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.N) {
+                    val icuCalendar = android.icu.util.IslamicCalendar()
+                    icuCalendar.time = date
+                    hijriYear = icuCalendar.get(android.icu.util.IslamicCalendar.YEAR)
+                }
+            } catch (_: Exception) {}
+            "$trimmed $hijriYear هـ"
         }
-        var hijriYear = 1448
-        try {
-            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.N) {
-                val icuCalendar = android.icu.util.IslamicCalendar()
-                icuCalendar.time = date
-                hijriYear = icuCalendar.get(android.icu.util.IslamicCalendar.YEAR)
+
+        if (lang == AppLanguage.ARABIC) {
+            return arabicDate
+        }
+
+        return convertArabicHijriToEnglish(arabicDate, date)
+    }
+
+    private fun convertArabicHijriToEnglish(arabicHijri: String, fallbackDate: Date): String {
+        var text = arabicHijri
+        val arabicDigits = charArrayOf('٠', '١', '٢', '٣', '٤', '٥', '٦', '٧', '٨', '٩')
+        for (i in arabicDigits.indices) {
+            text = text.replace(arabicDigits[i], ('0' + i))
+        }
+
+        val monthMap = listOf(
+            "محرم الحرام" to "Muharram",
+            "محرم" to "Muharram",
+            "صفر الخير" to "Safar",
+            "صفر" to "Safar",
+            "ربيع الأول" to "Rabi' al-Awwal",
+            "ربيع الاول" to "Rabi' al-Awwal",
+            "ربيع الثاني" to "Rabi' al-Thani",
+            "ربيع الآخر" to "Rabi' al-Thani",
+            "ربيع الاخر" to "Rabi' al-Thani",
+            "جمادى الأولى" to "Jumada al-Ula",
+            "جمادى الاولى" to "Jumada al-Ula",
+            "جمادى الأول" to "Jumada al-Ula",
+            "جمادى الاول" to "Jumada al-Ula",
+            "جمادى الآخرة" to "Jumada al-Thaniyah",
+            "جمادى الاخره" to "Jumada al-Thaniyah",
+            "جمادى الثانية" to "Jumada al-Thaniyah",
+            "جمادى الثانيه" to "Jumada al-Thaniyah",
+            "رجب الأصب" to "Rajab",
+            "رجب الاصب" to "Rajab",
+            "رجب" to "Rajab",
+            "شعبان المعظم" to "Sha'ban",
+            "شعبان" to "Sha'ban",
+            "رمضان المبارك" to "Ramadan",
+            "رمضان" to "Ramadan",
+            "شوال المكرم" to "Shawwal",
+            "شوال" to "Shawwal",
+            "ذو القعدة" to "Dhu al-Qi'dah",
+            "ذو القعده" to "Dhu al-Qi'dah",
+            "ذو الحجة" to "Dhu al-Hijjah",
+            "ذو الحجه" to "Dhu al-Hijjah"
+        )
+
+        var monthFound = false
+        for ((arMonth, enMonth) in monthMap) {
+            if (text.contains(arMonth)) {
+                text = text.replace(arMonth, enMonth)
+                monthFound = true
+                break
             }
-        } catch (_: Exception) {}
-        return "$trimmed $hijriYear هـ"
+        }
+
+        text = text.replace("هـ", "AH")
+            .replace("ه", "AH")
+            .replace("التقويم الهجري الشريف", "Hijri Calendar")
+            .trim()
+
+        if (!text.endsWith("AH", ignoreCase = true)) {
+            text = "$text AH"
+        }
+
+        return if (monthFound) text else getFormattedHijriDate(fallbackDate, AppLanguage.ENGLISH)
     }
 
     /**
@@ -492,11 +572,36 @@ object PrayerCalculator {
     }
 
     /**
-     * Formats Gregorian date in Arabic with year suffix (e.g. الأحد، 6 سبتمبر 2026 م)
+     * Formats Gregorian date in Arabic or English
+     * (e.g. Arabic: الأحد، 6 سبتمبر 2026 م, English: Sunday, 6 September 2026)
      */
-    fun getFormattedGregorianDate(date: Date = Date()): String {
-        val sdf = SimpleDateFormat("EEEE، d MMMM yyyy م", Locale("ar"))
-        return sdf.format(date)
+    fun getFormattedGregorianDate(date: Date = Date(), lang: AppLanguage = AppLanguage.ARABIC): String {
+        return if (lang == AppLanguage.ARABIC) {
+            val sdf = SimpleDateFormat("EEEE، d MMMM yyyy م", Locale("ar"))
+            sdf.format(date)
+        } else {
+            val sdf = SimpleDateFormat("EEEE, d MMMM yyyy", Locale.ENGLISH)
+            sdf.format(date)
+        }
+    }
+
+    /**
+     * Ensures Gregorian date is in the requested language (translates/re-formats if language mismatch)
+     */
+    fun formatFullGregorianDate(rawGregorian: String? = null, lang: AppLanguage = AppLanguage.ARABIC, date: Date = Date()): String {
+        return if (lang == AppLanguage.ENGLISH) {
+            if (!rawGregorian.isNullOrBlank() && rawGregorian.any { it in 'a'..'z' || it in 'A'..'Z' } && !rawGregorian.any { it in '\u0600'..'\u06FF' }) {
+                rawGregorian
+            } else {
+                getFormattedGregorianDate(date, AppLanguage.ENGLISH)
+            }
+        } else {
+            if (!rawGregorian.isNullOrBlank() && rawGregorian.any { it in '\u0600'..'\u06FF' }) {
+                rawGregorian
+            } else {
+                getFormattedGregorianDate(date, AppLanguage.ARABIC)
+            }
+        }
     }
 
     /**

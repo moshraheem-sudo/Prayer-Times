@@ -1,10 +1,13 @@
 package com.example
 
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.WbSunny
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onRoot
-import com.example.data.model.NextPrayerInfo
+import com.example.data.model.AppLanguage
 import com.example.data.model.PrayerType
-import com.example.ui.screens.SophisticatedNextPrayerSpotlight
+import com.example.ui.screens.PrayerCardInfo
+import com.example.ui.screens.SophisticatedPrayerItemCard
 import com.example.ui.theme.MyApplicationTheme
 import com.github.takahirom.roborazzi.RobolectricDeviceQualifiers
 import com.github.takahirom.roborazzi.captureRoboImage
@@ -26,15 +29,18 @@ class GreetingScreenshotTest {
   fun greeting_screenshot() {
     composeTestRule.setContent {
       MyApplicationTheme {
-        SophisticatedNextPrayerSpotlight(
-          nextPrayer = NextPrayerInfo(
-            prayerType = PrayerType.DHUHR,
-            targetTimeStr = "11:53",
-            remainingMillis = 8070000L,
-            remainingFormatted = "02:14:30",
-            progress = 0.65f
+        SophisticatedPrayerItemCard(
+          currentLanguage = AppLanguage.ARABIC,
+          prayerInfo = PrayerCardInfo(
+            type = PrayerType.DHUHR,
+            rawTime = "11:53",
+            emoji = "☀️",
+            icon = Icons.Default.WbSunny,
+            description = "أذان الظهر"
           ),
-          liveTime = "11:53"
+          isNext = true,
+          isNotificationEnabled = true,
+          onToggleNotification = {}
         )
       }
     }

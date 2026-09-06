@@ -138,11 +138,14 @@ class PrayerTimesRepository(private val context: Context) {
     }
 
     private fun loadSavedThemeMode(): ThemeMode {
-        val saved = prefs.getString("app_theme_mode", ThemeMode.SYSTEM.name)
+        val saved = prefs.getString("app_theme_mode", null)
+        if (saved == null || saved == ThemeMode.SYSTEM.name) {
+            return ThemeMode.LIGHT
+        }
         return try {
-            ThemeMode.valueOf(saved ?: ThemeMode.SYSTEM.name)
+            ThemeMode.valueOf(saved)
         } catch (_: Exception) {
-            ThemeMode.SYSTEM
+            ThemeMode.LIGHT
         }
     }
 

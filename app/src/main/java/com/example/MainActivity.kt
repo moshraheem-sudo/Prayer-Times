@@ -20,21 +20,28 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.data.model.AppLanguage
 import com.example.data.model.ThemeMode
 import com.example.ui.AppTab
 import com.example.ui.PrayerTimesViewModel
 import com.example.ui.components.AppBottomNavBar
+import com.example.ui.components.AppUpdateDialog
 import com.example.ui.screens.HomeScreen
 import com.example.ui.screens.SettingsScreen
 import com.example.ui.theme.MyApplicationTheme
+import com.example.utils.AppStrings
 import com.example.utils.LocationHelper
 import com.example.utils.PrayerNotificationHelper
+import com.example.utils.UpdateCheckStatus
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -43,6 +50,7 @@ class MainActivity : ComponentActivity() {
         setContent {
             val prayerViewModel: PrayerTimesViewModel = viewModel()
             val themeMode by prayerViewModel.themeMode.collectAsState()
+            val appLanguage by prayerViewModel.appLanguage.collectAsState()
             val systemInDark = isSystemInDarkTheme()
             val isDark = when (themeMode) {
                 ThemeMode.SYSTEM -> systemInDark
@@ -51,7 +59,8 @@ class MainActivity : ComponentActivity() {
             }
 
             MyApplicationTheme(darkTheme = isDark) {
-                CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
+                val layoutDirection = if (appLanguage == AppLanguage.ARABIC) LayoutDirection.Rtl else LayoutDirection.Ltr
+                CompositionLocalProvider(LocalLayoutDirection provides layoutDirection) {
                     PrayerApp(viewModel = prayerViewModel, themeMode = themeMode)
                 }
             }
@@ -62,7 +71,7 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun PrayerApp(
     viewModel: PrayerTimesViewModel = viewModel(),
-    themeMode: ThemeMode = ThemeMode.SYSTEM
+    themeMode: ThemeMode = ThemeMode.LIGHT
 ) {
     val context = LocalContext.current
     val currentTab by viewModel.currentTab.collectAsState()
@@ -83,6 +92,18 @@ fun PrayerApp(
     val showIshaSeparate by viewModel.showIshaSeparate.collectAsState()
     val isGpsLocating by viewModel.isGpsLocating.collectAsState()
     val gpsStatusMessage by viewModel.gpsStatusMessage.collectAsState()
+    val appUpdateStatus by viewModel.updateStatus.collectAsStateWithLifecycle()
+    var showUpdateDialog by remember { mutableStateOf(false) }
+
+    LaunchedEffect(appUpdateStatus) {
+        if (appUpdateStatus is UpdateCheckStatus.UpdateAvailable ||
+            appUpdateStatus is UpdateCheckStatus.Downloading ||
+            appUpdateStatus is UpdateCheckStatus.DownloadReady ||
+            appUpdateStatus is UpdateCheckStatus.PermissionRequired
+        ) {
+            showUpdateDialog = true
+        }
+    }
 
     val locationPermissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestMultiplePermissions()
@@ -91,9 +112,9 @@ fun PrayerApp(
                 permissions[Manifest.permission.ACCESS_COARSE_LOCATION] == true
         if (granted) {
             if (!LocationHelper.isLocationServiceEnabled(context)) {
-                android.widget.Toast.makeText(context, "يرجى تفعيل خدمة الموقع (GPS) في الهاتف", android.widget.Toast.LENGTH_LONG).show()
+                android.widget.Toast.makeText(context, AppStrings.gpsToastEnable(appLanguage), android.widget.Toast.LENGTH_LONG).show()
                 LocationHelper.openLocationSettings(context)
-                viewModel.setGpsStatusMessage("تم فتح إعدادات الموقع، يرجى تفعيل GPS لتحديد مكانك بدقة.")
+                viewModel.setGpsStatusMessage(AppStrings.gpsStatusOpeningSettings(appLanguage))
             } else {
                 viewModel.locateViaGps(context)
             }
@@ -113,9 +134,9 @@ fun PrayerApp(
                 )
             )
         } else if (!LocationHelper.isLocationServiceEnabled(context)) {
-            android.widget.Toast.makeText(context, "يرجى تفعيل خدمة الموقع (GPS) في الهاتف", android.widget.Toast.LENGTH_LONG).show()
+            android.widget.Toast.makeText(context, AppStrings.gpsToastEnable(appLanguage), android.widget.Toast.LENGTH_LONG).show()
             LocationHelper.openLocationSettings(context)
-            viewModel.setGpsStatusMessage("خدمة GPS مغلقة، تم فتح إعدادات الهاتف لتفعيلها مباشرة...")
+            viewModel.setGpsStatusMessage(AppStrings.gpsStatusDisabled(appLanguage))
         } else {
             viewModel.locateViaGps(context)
         }
@@ -136,6 +157,7 @@ fun PrayerApp(
         } else {
             viewModel.locateViaGps(context)
         }
+        viewModel.checkForAppUpdates()
     }
 
     Scaffold(
@@ -256,10 +278,36 @@ fun PrayerApp(
                         onStopAdhanPlayback = { viewModel.stopAdhanPlayback() },
                         muezzinDownloadStatuses = muezzinDownloadStatuses,
                         onDownloadAllMuezzins = { viewModel.downloadAllMuezzins() },
-                        onDownloadMuezzin = { viewModel.downloadMuezzin(it) }
+                        onDownloadMuezzin = { viewModel.downloadMuezzin(it) },
+                        appUpdateStatus = appUpdateStatus,
+                        onCheckForUpdates = { viewModel.checkForAppUpdates() },
+                        onDownloadAndInstallUpdate = { url, name -> viewModel.downloadAndInstallAppUpdate(url, name) },
+                        onResetUpdateStatus = { viewModel.resetAppUpdateStatus() }
                     )
                 }
             }
         }
+    }
+
+    if (showUpdateDialog && (
+        appUpdateStatus is UpdateCheckStatus.UpdateAvailable ||
+        appUpdateStatus is UpdateCheckStatus.Downloading ||
+        appUpdateStatus is UpdateCheckStatus.DownloadReady ||
+        appUpdateStatus is UpdateCheckStatus.PermissionRequired ||
+        appUpdateStatus is UpdateCheckStatus.Error
+    )) {
+        AppUpdateDialog(
+            updateStatus = appUpdateStatus,
+            currentLanguage = appLanguage,
+            onDismiss = {
+                showUpdateDialog = false
+            },
+            onDownloadNow = { downloadUrl, apkFileName ->
+                viewModel.downloadAndInstallAppUpdate(downloadUrl, apkFileName)
+            },
+            onRetryCheck = {
+                viewModel.checkForAppUpdates()
+            }
+        )
     }
 }

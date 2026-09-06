@@ -5,6 +5,7 @@ import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -50,6 +51,9 @@ import androidx.compose.material.icons.filled.RecordVoiceOver
 import androidx.compose.material.icons.filled.Remove
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.material.icons.filled.RestartAlt
+import androidx.compose.material.icons.filled.Security
+import androidx.compose.material.icons.filled.SystemUpdate
+import androidx.compose.material.icons.filled.Update
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Send
 import androidx.compose.material.icons.filled.SettingsSuggest
@@ -91,6 +95,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
@@ -114,8 +119,11 @@ import com.example.ui.theme.IslamicGold
 import com.example.utils.AdhanPlaybackState
 import com.example.utils.AdhanPlaybackStatus
 import com.example.utils.AppStrings
+import com.example.utils.AppUpdateManager
 import com.example.utils.MuezzinDownloadManager
 import com.example.utils.MuezzinDownloadStatus
+import com.example.utils.PrayerCalculator
+import com.example.utils.UpdateCheckStatus
 
 @Composable
 fun SettingsScreen(
@@ -175,6 +183,10 @@ fun SettingsScreen(
     muezzinDownloadStatuses: Map<String, MuezzinDownloadStatus> = emptyMap(),
     onDownloadAllMuezzins: () -> Unit = {},
     onDownloadMuezzin: (Muezzin) -> Unit = {},
+    appUpdateStatus: UpdateCheckStatus = UpdateCheckStatus.Idle,
+    onCheckForUpdates: () -> Unit = {},
+    onDownloadAndInstallUpdate: (String, String) -> Unit = { _, _ -> },
+    onResetUpdateStatus: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     // Collapsible states for settings sections
@@ -192,6 +204,7 @@ fun SettingsScreen(
 
     // Dialog state for custom prayer alert customization
     var activeConfigPrayerType by remember { mutableStateOf<PrayerType?>(null) }
+    val context = LocalContext.current
 
     Column(
         modifier = modifier
@@ -905,16 +918,32 @@ fun SettingsScreen(
                                     fontSize = 18.sp
                                 )
                                 Spacer(modifier = Modifier.width(10.dp))
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Text(
-                                            text = AppStrings.prayerName(prayer, currentLanguage),
-                                            style = MaterialTheme.typography.bodyMedium,
-                                            color = if (isEnabled) AppColors.current.textTitle else AppColors.current.textSubtle,
-                                            fontWeight = if (isEnabled) FontWeight.Bold else FontWeight.Normal
-                                        )
-                                        Spacer(modifier = Modifier.width(6.dp))
+                                Column(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .padding(end = 4.dp),
+                                    verticalArrangement = Arrangement.Center
+                                ) {
+                                    Text(
+                                        text = AppStrings.prayerName(prayer, currentLanguage),
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = if (isEnabled) AppColors.current.textTitle else AppColors.current.textSubtle,
+                                        fontWeight = if (isEnabled) FontWeight.Bold else FontWeight.Normal,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                    Spacer(modifier = Modifier.height(3.dp))
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                    ) {
                                         // Badge for sound mode
+                                        val shortSoundLabel = when (config.soundMode) {
+                                            AdhanSoundMode.FULL_ADHAN -> if (currentLanguage == AppLanguage.ARABIC) "أذان كامل" else "Full Adhan"
+                                            AdhanSoundMode.SHORT_TAKBIR -> if (currentLanguage == AppLanguage.ARABIC) "تكبيرات" else "Takbir"
+                                            AdhanSoundMode.BEEP_ALERT -> if (currentLanguage == AppLanguage.ARABIC) "نغمة" else "Tone"
+                                            AdhanSoundMode.VIBRATE_ONLY -> if (currentLanguage == AppLanguage.ARABIC) "اهتزاز" else "Vibrate"
+                                        }
                                         Box(
                                             modifier = Modifier
                                                 .clip(RoundedCornerShape(6.dp))
@@ -922,40 +951,53 @@ fun SettingsScreen(
                                                     if (isEnabled) AppColors.current.tealGlow20
                                                     else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
                                                 )
-                                                .padding(horizontal = 6.dp, vertical = 2.dp)
+                                                .padding(horizontal = 5.dp, vertical = 2.dp)
                                         ) {
                                             Text(
-                                                text = config.soundMode.titleAr,
+                                                text = shortSoundLabel,
                                                 fontSize = 9.sp,
                                                 fontWeight = FontWeight.Bold,
-                                                color = if (isEnabled) AppColors.current.tealAccentLight else AppColors.current.textSubtle
+                                                color = if (isEnabled) AppColors.current.tealAccentLight else AppColors.current.textSubtle,
+                                                maxLines = 1
                                             )
                                         }
 
                                         // Badge for repeat mode if not ONCE
                                         if (config.repeatMode != AlarmRepeatMode.ONCE) {
-                                            Spacer(modifier = Modifier.width(4.dp))
-                                            Box(
-                                                modifier = Modifier
-                                                    .clip(RoundedCornerShape(6.dp))
-                                                    .background(IslamicGold.copy(alpha = 0.15f))
-                                                .padding(horizontal = 5.dp, vertical = 2.dp)
-                                            ) {
-                                                Text(
-                                                    text = config.repeatMode.titleAr,
-                                                    fontSize = 9.sp,
-                                                    fontWeight = FontWeight.Bold,
-                                                    color = IslamicGold
-                                                )
+                                            val shortRepeatLabel = when (config.repeatMode) {
+                                                AlarmRepeatMode.REPEAT_TWICE -> if (currentLanguage == AppLanguage.ARABIC) "+5 د" else "+5m"
+                                                AlarmRepeatMode.REPEAT_THREE -> if (currentLanguage == AppLanguage.ARABIC) "تكرار×2" else "2x"
+                                                AlarmRepeatMode.REMIND_BEFORE_10 -> if (currentLanguage == AppLanguage.ARABIC) "-10 د" else "-10m"
+                                                AlarmRepeatMode.ONCE -> ""
+                                            }
+                                            if (shortRepeatLabel.isNotEmpty()) {
+                                                Box(
+                                                    modifier = Modifier
+                                                        .clip(RoundedCornerShape(6.dp))
+                                                        .background(IslamicGold.copy(alpha = 0.15f))
+                                                        .padding(horizontal = 4.dp, vertical = 2.dp)
+                                                ) {
+                                                    Text(
+                                                        text = shortRepeatLabel,
+                                                        fontSize = 9.sp,
+                                                        fontWeight = FontWeight.Bold,
+                                                        color = IslamicGold,
+                                                        maxLines = 1
+                                                    )
+                                                }
                                             }
                                         }
                                     }
                                     Spacer(modifier = Modifier.height(2.dp))
                                     Text(
-                                        text = if (isEnabled) "اضغط هنا لتخصيص الصوت والمؤذن والتكرار ⚙️" else desc,
+                                        text = if (isEnabled) {
+                                            if (currentLanguage == AppLanguage.ARABIC) "اضغط لتخصيص الصوت والمؤذن" else "Tap to customize alert & muezzin"
+                                        } else desc,
                                         style = MaterialTheme.typography.labelSmall,
                                         color = if (isEnabled) AppColors.current.tealAccentLight.copy(alpha = 0.85f) else AppColors.current.textSubtle,
-                                        fontSize = 10.sp
+                                        fontSize = 10.sp,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
                                     )
                                 }
                                 Spacer(modifier = Modifier.width(6.dp))
@@ -1660,7 +1702,12 @@ fun SettingsScreen(
                                             )
                                             if (isManual) {
                                                 Text(
-                                                    text = if (manualHijriCustomDate != null) "(تعديل مخصص)" else "(معدّل: ${if (manualHijriOffset > 0) "+$manualHijriOffset" else "$manualHijriOffset"} يوم)",
+                                                    text = if (manualHijriCustomDate != null) {
+                                                        if (currentLanguage == AppLanguage.ARABIC) "(تعديل مخصص)" else "(Custom override)"
+                                                    } else {
+                                                        if (currentLanguage == AppLanguage.ARABIC) "(معدّل: ${if (manualHijriOffset > 0) "+$manualHijriOffset" else "$manualHijriOffset"} يوم)"
+                                                        else "(Adjusted: ${if (manualHijriOffset > 0) "+$manualHijriOffset" else "$manualHijriOffset"} days)"
+                                                    },
                                                     style = MaterialTheme.typography.labelSmall,
                                                     color = IslamicGold,
                                                     fontSize = 10.sp,
@@ -1670,7 +1717,7 @@ fun SettingsScreen(
                                         }
                                     }
                                     Text(
-                                        text = hDate,
+                                        text = PrayerCalculator.formatFullHijriDate(hDate, currentLanguage),
                                         style = MaterialTheme.typography.bodyMedium,
                                         fontWeight = FontWeight.Bold,
                                         color = if (isManual) IslamicGold else AppColors.current.tealAccentLight,
@@ -2244,6 +2291,329 @@ fun SettingsScreen(
                         lineHeight = 17.sp,
                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
                     )
+
+                    // In-app Update Section
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 4.dp),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
+                        ),
+                        border = BorderStroke(1.dp, AppColors.current.tealAccentLight.copy(alpha = 0.3f))
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(12.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.SystemUpdate,
+                                    contentDescription = null,
+                                    tint = AppColors.current.tealAccentLight,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    text = if (currentLanguage == AppLanguage.ARABIC) "تحديث التطبيق" else "App Update",
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.Bold,
+                                    color = AppColors.current.textTitle
+                                )
+                            }
+
+                            when (appUpdateStatus) {
+                                is UpdateCheckStatus.Idle -> {
+                                    Text(
+                                        text = if (currentLanguage == AppLanguage.ARABIC)
+                                            "البحث التلقائي عن أحدث إصدار وتثبيته مباشرة داخل التطبيق"
+                                        else
+                                            "Check online and install updates directly within the app",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = AppColors.current.textSubtle,
+                                        textAlign = TextAlign.Center,
+                                        fontSize = 10.sp
+                                    )
+                                    Button(
+                                        onClick = { onCheckForUpdates() },
+                                        colors = ButtonDefaults.buttonColors(
+                                            containerColor = AppColors.current.tealAccentLight,
+                                            contentColor = Color.White
+                                        ),
+                                        shape = RoundedCornerShape(8.dp),
+                                        modifier = Modifier.fillMaxWidth(0.85f)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Update,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text(
+                                            text = if (currentLanguage == AppLanguage.ARABIC) "التحقق من وجود تحديث" else "Check for Updates",
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 12.sp
+                                        )
+                                    }
+                                }
+                                is UpdateCheckStatus.Checking -> {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.Center,
+                                        modifier = Modifier.padding(vertical = 6.dp)
+                                    ) {
+                                        CircularProgressIndicator(
+                                            modifier = Modifier.size(18.dp),
+                                            strokeWidth = 2.dp,
+                                            color = AppColors.current.tealAccentLight
+                                        )
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Text(
+                                            text = if (currentLanguage == AppLanguage.ARABIC) "جارِ البحث عن أحدث إصدار..." else "Checking for latest update...",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = AppColors.current.tealAccentLight,
+                                            fontWeight = FontWeight.Medium
+                                        )
+                                    }
+                                }
+                                is UpdateCheckStatus.UpToDate -> {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.Center,
+                                        modifier = Modifier.padding(vertical = 4.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.CheckCircle,
+                                            contentDescription = null,
+                                            tint = AppColors.current.tealAccentLight,
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text(
+                                            text = if (currentLanguage == AppLanguage.ARABIC) "أنت تستخدم أحدث إصدار متوفر حالياً" else "Your app is currently up to date",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            fontWeight = FontWeight.Bold,
+                                            color = AppColors.current.tealAccentLight
+                                        )
+                                    }
+                                    OutlinedButton(
+                                        onClick = { onCheckForUpdates() },
+                                        shape = RoundedCornerShape(8.dp),
+                                        modifier = Modifier.padding(top = 2.dp)
+                                    ) {
+                                        Text(
+                                            text = if (currentLanguage == AppLanguage.ARABIC) "إعادة الفحص" else "Check Again",
+                                            fontSize = 11.sp
+                                        )
+                                    }
+                                }
+                                is UpdateCheckStatus.UpdateAvailable -> {
+                                    val updateInfo = appUpdateStatus
+                                    Column(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalAlignment = Alignment.CenterHorizontally,
+                                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                                    ) {
+                                        Text(
+                                            text = if (currentLanguage == AppLanguage.ARABIC)
+                                                "يتوفر إصدار جديد: v${updateInfo.latestVersionName}"
+                                            else
+                                                "New version available: v${updateInfo.latestVersionName}",
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            fontWeight = FontWeight.Bold,
+                                            color = IslamicGold
+                                        )
+                                        if (updateInfo.releaseNotes.isNotEmpty()) {
+                                            Text(
+                                                text = updateInfo.releaseNotes,
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = AppColors.current.textSubtle,
+                                                textAlign = TextAlign.Center,
+                                                fontSize = 10.sp,
+                                                maxLines = 2,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                        }
+                                        Button(
+                                            onClick = {
+                                                onDownloadAndInstallUpdate(updateInfo.downloadUrl, updateInfo.apkFileName)
+                                            },
+                                            colors = ButtonDefaults.buttonColors(
+                                                containerColor = IslamicGold,
+                                                contentColor = Color.Black
+                                            ),
+                                            shape = RoundedCornerShape(8.dp),
+                                            modifier = Modifier.fillMaxWidth(0.85f)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.Download,
+                                                contentDescription = null,
+                                                modifier = Modifier.size(16.dp)
+                                            )
+                                            Spacer(modifier = Modifier.width(6.dp))
+                                            Text(
+                                                text = if (currentLanguage == AppLanguage.ARABIC) "تنزيل الآن" else "Download Now",
+                                                fontWeight = FontWeight.Bold,
+                                                fontSize = 12.sp
+                                            )
+                                        }
+                                    }
+                                }
+                                is UpdateCheckStatus.Downloading -> {
+                                    val progress = appUpdateStatus.progressPercent
+                                    val readMb = appUpdateStatus.bytesRead / (1024f * 1024f)
+                                    val totalMb = appUpdateStatus.totalBytes / (1024f * 1024f)
+                                    Column(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalAlignment = Alignment.CenterHorizontally,
+                                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                                    ) {
+                                        Text(
+                                            text = if (currentLanguage == AppLanguage.ARABIC) "جارِ تنزيل التحديث... $progress%" else "Downloading update... $progress%",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            fontWeight = FontWeight.Bold,
+                                            color = AppColors.current.tealAccentLight
+                                        )
+                                        LinearProgressIndicator(
+                                            progress = { progress / 100f },
+                                            modifier = Modifier
+                                                .fillMaxWidth(0.85f)
+                                                .height(6.dp)
+                                                .clip(RoundedCornerShape(3.dp)),
+                                            color = AppColors.current.tealAccentLight
+                                        )
+                                        if (totalMb > 0f) {
+                                            Text(
+                                                text = String.format("%.1f MB / %.1f MB", readMb, totalMb),
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = AppColors.current.textSubtle,
+                                                fontSize = 10.sp
+                                            )
+                                        }
+                                    }
+                                }
+                                is UpdateCheckStatus.DownloadReady -> {
+                                    val apk = appUpdateStatus.apkFile
+                                    Column(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalAlignment = Alignment.CenterHorizontally,
+                                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                                    ) {
+                                        Text(
+                                            text = if (currentLanguage == AppLanguage.ARABIC) "اكتمل التنزيل بنجاح! جاهز للتثبيت" else "Download completed! Ready to install",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            fontWeight = FontWeight.Bold,
+                                            color = AppColors.current.tealAccentLight
+                                        )
+                                        Button(
+                                            onClick = {
+                                                AppUpdateManager.installApk(context, apk)
+                                            },
+                                            colors = ButtonDefaults.buttonColors(
+                                                containerColor = IslamicGold,
+                                                contentColor = Color.Black
+                                            ),
+                                            shape = RoundedCornerShape(8.dp),
+                                            modifier = Modifier.fillMaxWidth(0.85f)
+                                        ) {
+                                            Text(
+                                                text = if (currentLanguage == AppLanguage.ARABIC) "تثبيت التحديث الآن" else "Install Update Now",
+                                                fontWeight = FontWeight.Bold,
+                                                fontSize = 12.sp
+                                            )
+                                        }
+                                    }
+                                }
+                                is UpdateCheckStatus.PermissionRequired -> {
+                                    val apk = appUpdateStatus.apkFile
+                                    Column(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalAlignment = Alignment.CenterHorizontally,
+                                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                                    ) {
+                                        Text(
+                                            text = if (currentLanguage == AppLanguage.ARABIC)
+                                                "⚠️ يتطلب النظام صلاحية 'تثبيت التطبيقات غير المعروفة' للمتابعة"
+                                            else
+                                                "⚠️ 'Install unknown apps' permission required",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            fontWeight = FontWeight.Bold,
+                                            color = Color(0xFFFFA000),
+                                            textAlign = TextAlign.Center
+                                        )
+                                        Button(
+                                            onClick = {
+                                                AppUpdateManager.openInstallPermissionSettings(context)
+                                            },
+                                            colors = ButtonDefaults.buttonColors(
+                                                containerColor = IslamicGold,
+                                                contentColor = Color.Black
+                                            ),
+                                            shape = RoundedCornerShape(8.dp),
+                                            modifier = Modifier.fillMaxWidth(0.85f)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.Security,
+                                                contentDescription = null,
+                                                modifier = Modifier.size(16.dp)
+                                            )
+                                            Spacer(modifier = Modifier.width(6.dp))
+                                            Text(
+                                                text = if (currentLanguage == AppLanguage.ARABIC) "منح الصلاحية في الإعدادات" else "Grant Permission in Settings",
+                                                fontWeight = FontWeight.Bold,
+                                                fontSize = 12.sp
+                                            )
+                                        }
+                                        OutlinedButton(
+                                            onClick = {
+                                                AppUpdateManager.installApk(context, apk)
+                                            },
+                                            shape = RoundedCornerShape(8.dp),
+                                            modifier = Modifier.fillMaxWidth(0.85f)
+                                        ) {
+                                            Text(
+                                                text = if (currentLanguage == AppLanguage.ARABIC) "تثبيت التحديث الآن" else "Install Update Now",
+                                                fontWeight = FontWeight.Bold,
+                                                fontSize = 12.sp
+                                            )
+                                        }
+                                    }
+                                }
+                                is UpdateCheckStatus.Error -> {
+                                    val errorMsg = appUpdateStatus.message
+                                    Column(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalAlignment = Alignment.CenterHorizontally,
+                                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                                    ) {
+                                        Text(
+                                            text = errorMsg,
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.error,
+                                            textAlign = TextAlign.Center,
+                                            fontSize = 10.sp
+                                        )
+                                        TextButton(onClick = { onCheckForUpdates() }) {
+                                            Text(
+                                                text = if (currentLanguage == AppLanguage.ARABIC) "إعادة المحاولة" else "Retry",
+                                                color = AppColors.current.tealAccentLight,
+                                                fontSize = 11.sp
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
 
                     HorizontalDivider(
                         color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f),

@@ -131,17 +131,20 @@ class PrayerTimesViewModel(application: Application) : AndroidViewModel(applicat
 
     fun locateViaGps(context: android.content.Context, onComplete: ((Boolean) -> Unit)? = null) {
         viewModelScope.launch {
+            val lang = appLanguage.value
             _isGpsLocating.value = true
-            _gpsStatusMessage.value = "جاري تحديد الموقع الدقيق عبر GPS والإنترنت..."
+            _gpsStatusMessage.value = com.example.utils.AppStrings.gpsStatusLocating(lang)
             try {
                 val location = com.example.utils.LocationHelper.getDeviceLocation(context)
                     ?: com.example.data.model.PredefinedCities.defaultCity
-                _gpsStatusMessage.value = "تم تحديد الموقع بنجاح: ${location.nameAr}"
+                val cityName = if (lang == AppLanguage.ARABIC) location.nameAr else location.nameEn
+                _gpsStatusMessage.value = com.example.utils.AppStrings.gpsStatusDetermined(cityName, lang)
                 changeCity(location)
                 onComplete?.invoke(true)
             } catch (e: Exception) {
                 val defaultCity = com.example.data.model.PredefinedCities.defaultCity
-                _gpsStatusMessage.value = "تم تحديد الموقع على: ${defaultCity.nameAr}"
+                val cityName = if (lang == AppLanguage.ARABIC) defaultCity.nameAr else defaultCity.nameEn
+                _gpsStatusMessage.value = com.example.utils.AppStrings.gpsStatusSetTo(cityName, lang)
                 changeCity(defaultCity)
                 onComplete?.invoke(true)
             } finally {
@@ -431,5 +434,25 @@ class PrayerTimesViewModel(application: Application) : AndroidViewModel(applicat
     fun downloadMuezzin(muezzin: Muezzin) {
         val context = getApplication<Application>()
         MuezzinDownloadManager.downloadMuezzin(context, muezzin)
+    }
+
+    val updateStatus: StateFlow<com.example.utils.UpdateCheckStatus> = com.example.utils.AppUpdateManager.updateStatus
+
+    fun checkForAppUpdates() {
+        val context = getApplication<Application>()
+        viewModelScope.launch {
+            com.example.utils.AppUpdateManager.checkForUpdates(context)
+        }
+    }
+
+    fun downloadAndInstallAppUpdate(downloadUrl: String, apkFileName: String) {
+        val context = getApplication<Application>()
+        viewModelScope.launch {
+            com.example.utils.AppUpdateManager.downloadAndInstallUpdate(context, downloadUrl, apkFileName)
+        }
+    }
+
+    fun resetAppUpdateStatus() {
+        com.example.utils.AppUpdateManager.resetStatus()
     }
 }
