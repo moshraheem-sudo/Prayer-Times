@@ -116,7 +116,7 @@ fun PrayerApp(
                 LocationHelper.openLocationSettings(context)
                 viewModel.setGpsStatusMessage(AppStrings.gpsStatusOpeningSettings(appLanguage))
             } else {
-                viewModel.locateViaGps(context)
+                viewModel.locateViaGps(context, forceRefresh = true)
             }
         }
     }
@@ -138,7 +138,7 @@ fun PrayerApp(
             LocationHelper.openLocationSettings(context)
             viewModel.setGpsStatusMessage(AppStrings.gpsStatusDisabled(appLanguage))
         } else {
-            viewModel.locateViaGps(context)
+            viewModel.locateViaGps(context, forceRefresh = true)
         }
     }
 
@@ -155,7 +155,7 @@ fun PrayerApp(
                 )
             )
         } else {
-            viewModel.locateViaGps(context)
+            viewModel.locateViaGps(context, forceRefresh = false) // Battery optimization: don't force on launch
         }
         viewModel.checkForAppUpdates()
     }
@@ -282,6 +282,7 @@ fun PrayerApp(
                         appUpdateStatus = appUpdateStatus,
                         onCheckForUpdates = { viewModel.checkForAppUpdates() },
                         onDownloadAndInstallUpdate = { url, name -> viewModel.downloadAndInstallAppUpdate(url, name) },
+                        onCancelDownload = { viewModel.cancelAppUpdateDownload() },
                         onResetUpdateStatus = { viewModel.resetAppUpdateStatus() }
                     )
                 }
@@ -301,9 +302,14 @@ fun PrayerApp(
             currentLanguage = appLanguage,
             onDismiss = {
                 showUpdateDialog = false
+                viewModel.resetAppUpdateStatus()
             },
             onDownloadNow = { downloadUrl, apkFileName ->
                 viewModel.downloadAndInstallAppUpdate(downloadUrl, apkFileName)
+            },
+            onCancelDownload = {
+                viewModel.cancelAppUpdateDownload()
+                showUpdateDialog = false
             },
             onRetryCheck = {
                 viewModel.checkForAppUpdates()

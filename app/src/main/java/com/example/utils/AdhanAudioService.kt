@@ -157,6 +157,7 @@ class AdhanAudioService : Service(), MediaPlayer.OnPreparedListener,
     override fun onCreate() {
         super.onCreate()
         audioManager = getSystemService(Context.AUDIO_SERVICE) as? AudioManager
+        acquireWakeLock()
         createNotificationChannel()
     }
 
@@ -186,15 +187,24 @@ class AdhanAudioService : Service(), MediaPlayer.OnPreparedListener,
                     return START_NOT_STICKY
                 }
 
-                val text = when (currentSoundMode) {
-                    AdhanSoundMode.SHORT_TAKBIR -> "تكبيرات أذان ${currentPrayerName} بصوت ${currentMuezzin.nameAr}"
-                    else -> "يرفع الآن أذان ${currentPrayerName} بصوت ${currentMuezzin.nameAr}"
-                }
+                val title = if (currentSoundMode == AdhanSoundMode.SHORT_TAKBIR) "تكبيرات أذان ${currentPrayerName}" else "أذان ${currentPrayerName}"
+                val text = "بصوت ${currentMuezzin.nameAr}"
 
-                startForeground(NOTIFICATION_ID, buildPlayingNotification(
+                val notification = buildPlayingNotification(
                     muezzin = currentMuezzin,
+                    title = title,
                     text = text
-                ))
+                )
+
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    startForeground(
+                        NOTIFICATION_ID,
+                        notification,
+                        android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK
+                    )
+                } else {
+                    startForeground(NOTIFICATION_ID, notification)
+                }
 
                 playAudio(muezzin = currentMuezzin, isPreview = false)
             }
@@ -215,15 +225,24 @@ class AdhanAudioService : Service(), MediaPlayer.OnPreparedListener,
                     return START_NOT_STICKY
                 }
 
-                val text = when (currentSoundMode) {
-                    AdhanSoundMode.SHORT_TAKBIR -> "معاينة تكبيرات أذان ${currentPrayerName} بصوت ${currentMuezzin.nameAr}"
-                    else -> "معاينة أذان ${currentPrayerName} بصوت ${currentMuezzin.nameAr}"
-                }
+                val title = if (currentSoundMode == AdhanSoundMode.SHORT_TAKBIR) "معاينة تكبيرات ${currentPrayerName}" else "معاينة أذان ${currentPrayerName}"
+                val text = "بصوت ${currentMuezzin.nameAr}"
 
-                startForeground(NOTIFICATION_ID, buildPlayingNotification(
+                val notification = buildPlayingNotification(
                     muezzin = currentMuezzin,
+                    title = title,
                     text = text
-                ))
+                )
+
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    startForeground(
+                        NOTIFICATION_ID,
+                        notification,
+                        android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK
+                    )
+                } else {
+                    startForeground(NOTIFICATION_ID, notification)
+                }
 
                 playAudio(muezzin = currentMuezzin, isPreview = true)
             }
@@ -243,7 +262,14 @@ class AdhanAudioService : Service(), MediaPlayer.OnPreparedListener,
         val localFile = MuezzinDownloadManager.getAudioFile(this, muezzin)
         val online = isOnline(this)
 
-        if (!isDownloaded && !online) {
+        // If offline and selected muezzin is not yet downloaded, check if ANY other muezzin is available locally
+        val fallbackMuezzin = if (!isDownloaded && !online) {
+            Muezzin.values().firstOrNull { MuezzinDownloadManager.isAudioDownloaded(this, it) }
+        } else {
+            null
+        }
+
+        if (!isDownloaded && !online && fallbackMuezzin == null) {
             _playbackState.value = AdhanPlaybackState(
                 status = AdhanPlaybackStatus.ERROR,
                 currentMuezzinId = muezzin.id,
@@ -251,13 +277,66 @@ class AdhanAudioService : Service(), MediaPlayer.OnPreparedListener,
                 isPreview = isPreview,
                 errorMessage = "الملف الصوتي غير محمل ولا يوجد اتصال بالإنترنت"
             )
+            if (!isPreview) {
+                // Guaranteed audible fallback so prayer is never missed
+                try {
+                    acquireWakeLock()
+                    requestAudioFocus()
+                    mediaPlayer?.release()
+                    mediaPlayer = MediaPlayer().apply {
+                        setWakeMode(applicationContext, PowerManager.PARTIAL_WAKE_LOCK)
+                        setAudioAttributes(
+                            AudioAttributes.Builder()
+                                .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                                .setUsage(AudioAttributes.USAGE_ALARM)
+                                .setFlags(AudioAttributes.FLAG_AUDIBILITY_ENFORCED)
+                                .build()
+                        )
+                        setVolume(currentVolumeRatio, currentVolumeRatio)
+                        setDataSource(this@AdhanAudioService, android.media.RingtoneManager.getDefaultUri(android.media.RingtoneManager.TYPE_ALARM))
+                        isLooping = true
+                        setOnErrorListener(this@AdhanAudioService)
+                        prepare()
+                        start()
+                    }
+                    
+                    _playbackState.value = AdhanPlaybackState(
+                        status = AdhanPlaybackStatus.PLAYING,
+                        currentMuezzinId = muezzin.id,
+                        prayerName = currentPrayerName,
+                        isPreview = false
+                    )
+                    
+                    // Stop fallback after 30 seconds
+                    CoroutineScope(Dispatchers.Default).launch {
+                        delay(30000)
+                        if (_playbackState.value.status == AdhanPlaybackStatus.PLAYING) {
+                            stopPlayback()
+                            stopSelf()
+                        }
+                    }
+                    AudioPlayerHelper.vibratePattern(this)
+                    return // Keep service running for fallback alarm
+                } catch (e: Exception) {
+                    AudioPlayerHelper.playBeep()
+                    AudioPlayerHelper.vibratePattern(this)
+                }
+            }
             stopSelf()
             return
         }
 
+        val effectiveMuezzin = fallbackMuezzin ?: muezzin
+        val effectiveLocalFile = if (fallbackMuezzin != null) {
+            MuezzinDownloadManager.getAudioFile(this, fallbackMuezzin)
+        } else {
+            localFile
+        }
+        val effectiveIsDownloaded = fallbackMuezzin != null || isDownloaded
+
         _playbackState.value = AdhanPlaybackState(
             status = AdhanPlaybackStatus.BUFFERING,
-            currentMuezzinId = muezzin.id,
+            currentMuezzinId = effectiveMuezzin.id,
             prayerName = currentPrayerName,
             isPreview = isPreview
         )
@@ -266,6 +345,20 @@ class AdhanAudioService : Service(), MediaPlayer.OnPreparedListener,
             acquireWakeLock()
             requestAudioFocus()
 
+            // Ensure alarm stream volume is audible on device for actual prayer adhan
+            if (!isPreview) {
+                try {
+                    val maxAlarmVol = audioManager?.getStreamMaxVolume(AudioManager.STREAM_ALARM) ?: 7
+                    val currentAlarmVol = audioManager?.getStreamVolume(AudioManager.STREAM_ALARM) ?: 0
+                    val minRequiredVol = (maxAlarmVol * 0.60f).toInt().coerceAtLeast(1)
+                    if (currentAlarmVol < minRequiredVol && maxAlarmVol > 0) {
+                        audioManager?.setStreamVolume(AudioManager.STREAM_ALARM, minRequiredVol, 0)
+                    }
+                } catch (e: Exception) {
+                    Log.w(TAG, "Could not adjust alarm stream volume: ${e.message}")
+                }
+            }
+
             mediaPlayer?.release()
             mediaPlayer = MediaPlayer().apply {
                 setWakeMode(applicationContext, PowerManager.PARTIAL_WAKE_LOCK)
@@ -273,20 +366,25 @@ class AdhanAudioService : Service(), MediaPlayer.OnPreparedListener,
                     AudioAttributes.Builder()
                         .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
                         .setUsage(if (isPreview) AudioAttributes.USAGE_MEDIA else AudioAttributes.USAGE_ALARM)
+                        .setFlags(AudioAttributes.FLAG_AUDIBILITY_ENFORCED)
                         .build()
                 )
                 setVolume(currentVolumeRatio, currentVolumeRatio)
-                if (isDownloaded && localFile.exists()) {
-                    setDataSource(localFile.absolutePath)
-                } else {
-                    setDataSource(muezzin.audioUrl)
-                    // Trigger background caching for next time
-                    MuezzinDownloadManager.downloadMuezzin(this@AdhanAudioService, muezzin)
-                }
-                setOnPreparedListener(this@AdhanAudioService)
                 setOnCompletionListener(this@AdhanAudioService)
                 setOnErrorListener(this@AdhanAudioService)
-                prepareAsync()
+
+                if (effectiveIsDownloaded && effectiveLocalFile.exists()) {
+                    setDataSource(effectiveLocalFile.absolutePath)
+                    // Synchronous prepare for local files - zero latency, instant start at exact second!
+                    prepare()
+                    this@AdhanAudioService.onPrepared(this)
+                } else {
+                    setDataSource(effectiveMuezzin.audioUrl)
+                    // Trigger background caching for next time
+                    MuezzinDownloadManager.downloadMuezzin(this@AdhanAudioService, effectiveMuezzin)
+                    setOnPreparedListener(this@AdhanAudioService)
+                    prepareAsync()
+                }
             }
         } catch (e: Exception) {
             Log.e(TAG, "Error initiating MediaPlayer: ${e.message}")
@@ -340,6 +438,10 @@ class AdhanAudioService : Service(), MediaPlayer.OnPreparedListener,
             isPreview = isCurrentPreview,
             errorMessage = message
         )
+        if (!isCurrentPreview) {
+            AudioPlayerHelper.playBeep()
+            AudioPlayerHelper.vibratePattern(this)
+        }
         stopPlayback()
         stopSelf()
     }
@@ -423,7 +525,7 @@ class AdhanAudioService : Service(), MediaPlayer.OnPreparedListener,
                     "PrayerTimes:AdhanAudioWakeLock"
                 )
             }
-            wakeLock?.acquire(6 * 60 * 1000L) // 6 minutes max
+            wakeLock?.acquire(10 * 60 * 1000L) // 10 minutes max to guarantee full Adhan completion
         } catch (e: Exception) {
             // ignore
         }
@@ -458,11 +560,13 @@ class AdhanAudioService : Service(), MediaPlayer.OnPreparedListener,
 
     private fun buildPlayingNotification(
         muezzin: Muezzin,
+        title: String,
         text: String
     ): Notification {
         val openAppIntent = Intent(this, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP
         }
+
         val openPendingIntent = PendingIntent.getActivity(
             this,
             0,
@@ -473,16 +577,13 @@ class AdhanAudioService : Service(), MediaPlayer.OnPreparedListener,
         val stopIntent = Intent(this, AdhanAudioService::class.java).apply {
             action = ACTION_STOP_ADHAN
         }
+
         val stopPendingIntent = PendingIntent.getService(
             this,
             1,
             stopIntent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
-
-        val boldText = SpannableString(text).apply {
-            setSpan(StyleSpan(Typeface.BOLD), 0, text.length, SpannableString.SPAN_EXCLUSIVE_EXCLUSIVE)
-        }
 
         val appIconBitmap = try {
             BitmapFactory.decodeResource(resources, R.drawable.ic_app_icon)
@@ -497,11 +598,11 @@ class AdhanAudioService : Service(), MediaPlayer.OnPreparedListener,
                     setLargeIcon(appIconBitmap)
                 }
             }
-            .setContentTitle(boldText)
-            .setContentText(boldText)
+            .setContentTitle(title)
+            .setContentText(text)
             .setStyle(
                 NotificationCompat.BigTextStyle()
-                    .bigText(boldText)
+                    .bigText(text)
             )
             .setContentIntent(openPendingIntent)
             .addAction(
@@ -513,6 +614,8 @@ class AdhanAudioService : Service(), MediaPlayer.OnPreparedListener,
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .setColor(0xFF14B8A6.toInt())
+            .setSilent(true)
+            .setSound(null)
             .build()
     }
 

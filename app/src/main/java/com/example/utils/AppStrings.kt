@@ -53,7 +53,7 @@ object AppStrings {
     fun prayerSectionTitle(lang: AppLanguage, cityName: String): String = when (lang) {
         AppLanguage.ARABIC -> {
             val prefix = if (cityName.startsWith("مدينة")) "" else "مدينة "
-            "مواقيت الصلاة الخمس حسب $prefix$cityName"
+            "مواقيت الصلوات الخمسة حسب $prefix$cityName"
         }
         AppLanguage.ENGLISH -> "Five Prayer Times for $cityName"
     }
@@ -217,8 +217,8 @@ object AppStrings {
     }
 
     fun githubAutoSyncSubtitle(lang: AppLanguage): String = when (lang) {
-        AppLanguage.ARABIC -> "التحقق التلقائي عند تشغيل التطبيق وتحديث التاريخ مع إشعار"
-        AppLanguage.ENGLISH -> "Check for updates on app launch and notify upon update"
+        AppLanguage.ARABIC -> "التحقق التلقائي عند تشغيل التطبيق وتحديث التاريخ في الخلفية بدون رنين"
+        AppLanguage.ENGLISH -> "Check for updates on app launch and update silently in background"
     }
 
     fun githubTriggerDispatchButton(lang: AppLanguage, isSending: Boolean): String = when {
@@ -253,8 +253,8 @@ object AppStrings {
     }
 
     fun appVersion(lang: AppLanguage): String = when (lang) {
-        AppLanguage.ARABIC -> "الإصدار 1.0.0"
-        AppLanguage.ENGLISH -> "Version 1.0.0"
+        AppLanguage.ARABIC -> "الإصدار ${com.example.BuildConfig.VERSION_NAME}"
+        AppLanguage.ENGLISH -> "Version ${com.example.BuildConfig.VERSION_NAME}"
     }
 
     fun appDescription(lang: AppLanguage): String = when (lang) {

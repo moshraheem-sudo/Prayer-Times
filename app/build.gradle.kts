@@ -17,8 +17,8 @@ android {
     applicationId = "com.aistudio.kafeelprayer.lxrkty"
     minSdk = 24
     targetSdk = 36
-    versionCode = 1
-    versionName = "1.0"
+    versionCode = 12000
+    versionName = "1.20.0"
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
   }

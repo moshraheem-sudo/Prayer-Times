@@ -36,6 +36,7 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CloudSync
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.DownloadDone
@@ -186,6 +187,7 @@ fun SettingsScreen(
     appUpdateStatus: UpdateCheckStatus = UpdateCheckStatus.Idle,
     onCheckForUpdates: () -> Unit = {},
     onDownloadAndInstallUpdate: (String, String) -> Unit = { _, _ -> },
+    onCancelDownload: () -> Unit = {},
     onResetUpdateStatus: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
@@ -932,73 +934,6 @@ fun SettingsScreen(
                                         maxLines = 1,
                                         overflow = TextOverflow.Ellipsis
                                     )
-                                    Spacer(modifier = Modifier.height(3.dp))
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(4.dp)
-                                    ) {
-                                        // Badge for sound mode
-                                        val shortSoundLabel = when (config.soundMode) {
-                                            AdhanSoundMode.FULL_ADHAN -> if (currentLanguage == AppLanguage.ARABIC) "أذان كامل" else "Full Adhan"
-                                            AdhanSoundMode.SHORT_TAKBIR -> if (currentLanguage == AppLanguage.ARABIC) "تكبيرات" else "Takbir"
-                                            AdhanSoundMode.BEEP_ALERT -> if (currentLanguage == AppLanguage.ARABIC) "نغمة" else "Tone"
-                                            AdhanSoundMode.VIBRATE_ONLY -> if (currentLanguage == AppLanguage.ARABIC) "اهتزاز" else "Vibrate"
-                                        }
-                                        Box(
-                                            modifier = Modifier
-                                                .clip(RoundedCornerShape(6.dp))
-                                                .background(
-                                                    if (isEnabled) AppColors.current.tealGlow20
-                                                    else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
-                                                )
-                                                .padding(horizontal = 5.dp, vertical = 2.dp)
-                                        ) {
-                                            Text(
-                                                text = shortSoundLabel,
-                                                fontSize = 9.sp,
-                                                fontWeight = FontWeight.Bold,
-                                                color = if (isEnabled) AppColors.current.tealAccentLight else AppColors.current.textSubtle,
-                                                maxLines = 1
-                                            )
-                                        }
-
-                                        // Badge for repeat mode if not ONCE
-                                        if (config.repeatMode != AlarmRepeatMode.ONCE) {
-                                            val shortRepeatLabel = when (config.repeatMode) {
-                                                AlarmRepeatMode.REPEAT_TWICE -> if (currentLanguage == AppLanguage.ARABIC) "+5 د" else "+5m"
-                                                AlarmRepeatMode.REPEAT_THREE -> if (currentLanguage == AppLanguage.ARABIC) "تكرار×2" else "2x"
-                                                AlarmRepeatMode.REMIND_BEFORE_10 -> if (currentLanguage == AppLanguage.ARABIC) "-10 د" else "-10m"
-                                                AlarmRepeatMode.ONCE -> ""
-                                            }
-                                            if (shortRepeatLabel.isNotEmpty()) {
-                                                Box(
-                                                    modifier = Modifier
-                                                        .clip(RoundedCornerShape(6.dp))
-                                                        .background(IslamicGold.copy(alpha = 0.15f))
-                                                        .padding(horizontal = 4.dp, vertical = 2.dp)
-                                                ) {
-                                                    Text(
-                                                        text = shortRepeatLabel,
-                                                        fontSize = 9.sp,
-                                                        fontWeight = FontWeight.Bold,
-                                                        color = IslamicGold,
-                                                        maxLines = 1
-                                                    )
-                                                }
-                                            }
-                                        }
-                                    }
-                                    Spacer(modifier = Modifier.height(2.dp))
-                                    Text(
-                                        text = if (isEnabled) {
-                                            if (currentLanguage == AppLanguage.ARABIC) "اضغط لتخصيص الصوت والمؤذن" else "Tap to customize alert & muezzin"
-                                        } else desc,
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = if (isEnabled) AppColors.current.tealAccentLight.copy(alpha = 0.85f) else AppColors.current.textSubtle,
-                                        fontSize = 10.sp,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
                                 }
                                 Spacer(modifier = Modifier.width(6.dp))
                                 
@@ -1683,46 +1618,51 @@ fun SettingsScreen(
                                     .clip(RoundedCornerShape(12.dp))
                                     .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
                                     .border(1.dp, if (isManual) IslamicGold.copy(alpha = 0.5f) else AppColors.current.tealGlow20, RoundedCornerShape(12.dp))
-                                    .padding(horizontal = 14.dp, vertical = 10.dp)
+                                    .padding(horizontal = 14.dp, vertical = 12.dp)
                             ) {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                Column(
+                                    horizontalAlignment = Alignment.CenterHorizontally,
                                     modifier = Modifier.fillMaxWidth()
                                 ) {
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.Center,
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
                                         Text("🌙", fontSize = 16.sp)
                                         Spacer(modifier = Modifier.width(8.dp))
-                                        Column {
-                                            Text(
-                                                text = if (currentLanguage == AppLanguage.ARABIC) "التاريخ الهجري الحالي:" else "Current Hijri Date:",
-                                                style = MaterialTheme.typography.bodySmall,
-                                                color = AppColors.current.textSubtle,
-                                                fontSize = 11.sp
-                                            )
-                                            if (isManual) {
-                                                Text(
-                                                    text = if (manualHijriCustomDate != null) {
-                                                        if (currentLanguage == AppLanguage.ARABIC) "(تعديل مخصص)" else "(Custom override)"
-                                                    } else {
-                                                        if (currentLanguage == AppLanguage.ARABIC) "(معدّل: ${if (manualHijriOffset > 0) "+$manualHijriOffset" else "$manualHijriOffset"} يوم)"
-                                                        else "(Adjusted: ${if (manualHijriOffset > 0) "+$manualHijriOffset" else "$manualHijriOffset"} days)"
-                                                    },
-                                                    style = MaterialTheme.typography.labelSmall,
-                                                    color = IslamicGold,
-                                                    fontSize = 10.sp,
-                                                    fontWeight = FontWeight.Bold
-                                                )
-                                            }
-                                        }
+                                        Text(
+                                            text = if (currentLanguage == AppLanguage.ARABIC) "التاريخ الهجري الحالي:" else "Current Hijri Date:",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = AppColors.current.textSubtle,
+                                            fontSize = 12.sp
+                                        )
                                     }
+                                    Spacer(modifier = Modifier.height(8.dp))
                                     Text(
                                         text = PrayerCalculator.formatFullHijriDate(hDate, currentLanguage),
-                                        style = MaterialTheme.typography.bodyMedium,
+                                        style = MaterialTheme.typography.bodyLarge,
                                         fontWeight = FontWeight.Bold,
                                         color = if (isManual) IslamicGold else AppColors.current.tealAccentLight,
-                                        fontSize = 13.sp
+                                        fontSize = 16.sp,
+                                        textAlign = TextAlign.Center
                                     )
+                                    if (isManual) {
+                                        Spacer(modifier = Modifier.height(4.dp))
+                                        Text(
+                                            text = if (manualHijriCustomDate != null) {
+                                                if (currentLanguage == AppLanguage.ARABIC) "(تعديل مخصص)" else "(Custom override)"
+                                            } else {
+                                                if (currentLanguage == AppLanguage.ARABIC) "(معدّل: ${if (manualHijriOffset > 0) "+$manualHijriOffset" else "$manualHijriOffset"} يوم)"
+                                                else "(Adjusted: ${if (manualHijriOffset > 0) "+$manualHijriOffset" else "$manualHijriOffset"} days)"
+                                            },
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = IslamicGold,
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            textAlign = TextAlign.Center
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -2499,6 +2439,23 @@ fun SettingsScreen(
                                                 fontSize = 10.sp
                                             )
                                         }
+                                        OutlinedButton(
+                                            onClick = { onCancelDownload() },
+                                            shape = RoundedCornerShape(8.dp),
+                                            colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFE53935)),
+                                            modifier = Modifier.padding(top = 4.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.Close,
+                                                contentDescription = null,
+                                                modifier = Modifier.size(14.dp)
+                                            )
+                                            Spacer(modifier = Modifier.width(4.dp))
+                                            Text(
+                                                text = if (currentLanguage == AppLanguage.ARABIC) "إلغاء التحميل" else "Cancel Download",
+                                                fontSize = 11.sp
+                                            )
+                                        }
                                     }
                                 }
                                 is UpdateCheckStatus.DownloadReady -> {
@@ -2728,8 +2685,16 @@ private fun CustomPrayerAlarmDialog(
     onPreview: (PrayerCustomAlarmConfig) -> Unit,
     onStopPreview: () -> Unit
 ) {
+    val isNonPrayerEvent = prayerType == PrayerType.SUNRISE || prayerType == PrayerType.SUNSET || prayerType == PrayerType.MIDNIGHT
+
     var isEnabled by remember(config) { mutableStateOf(config.isEnabled) }
-    var selectedSoundMode by remember(config) { mutableStateOf(config.soundMode) }
+    var selectedSoundMode by remember(config) { 
+        mutableStateOf(
+            if (isNonPrayerEvent && (config.soundMode == AdhanSoundMode.FULL_ADHAN || config.soundMode == AdhanSoundMode.SHORT_TAKBIR))
+                AdhanSoundMode.BEEP_ALERT
+            else config.soundMode
+        ) 
+    }
     var selectedRepeatMode by remember(config) { mutableStateOf(config.repeatMode) }
     var volume by remember(config) { mutableStateOf(config.customVolumePercent / 100f) }
     var selectedMuezzinId by remember(config) { mutableStateOf(config.specificMuezzinId) }
@@ -2769,7 +2734,11 @@ private fun CustomPrayerAlarmDialog(
                         color = AppColors.current.textTitle
                     )
                     Text(
-                        text = if (currentLanguage == AppLanguage.ARABIC) "خيارات الصوت، الأذان والتكرار" else "Sound, Adhan and Repeat Options",
+                        text = if (isNonPrayerEvent) {
+                            if (currentLanguage == AppLanguage.ARABIC) "خيارات التنبيه والتكرار" else "Alert and Repeat Options"
+                        } else {
+                            if (currentLanguage == AppLanguage.ARABIC) "خيارات الصوت، الأذان والتكرار" else "Sound, Adhan and Repeat Options"
+                        },
                         style = MaterialTheme.typography.bodySmall,
                         color = AppColors.current.tealAccentLight,
                         fontSize = 11.sp
@@ -2796,13 +2765,29 @@ private fun CustomPrayerAlarmDialog(
                 ) {
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            text = if (currentLanguage == AppLanguage.ARABIC) "تفعيل التنبيه لهذه الصلاة" else "Enable Alert for this Prayer",
+                            text = if (isNonPrayerEvent) {
+                                if (currentLanguage == AppLanguage.ARABIC) "تفعيل التنبيه لهذا الوقت" else "Enable Alert for this Time"
+                            } else {
+                                if (currentLanguage == AppLanguage.ARABIC) "تفعيل التنبيه لهذه الصلاة" else "Enable Alert for this Prayer"
+                            },
                             style = MaterialTheme.typography.bodyMedium,
                             fontWeight = FontWeight.Bold,
                             color = AppColors.current.textTitle
                         )
                         Text(
-                            text = if (isEnabled) "التنبيه مفعل ويشمل الأذان أو الصوت المختار" else "التنبيه معطل لهذه الصلاة",
+                            text = if (isEnabled) {
+                                if (isNonPrayerEvent) {
+                                    if (currentLanguage == AppLanguage.ARABIC) "التنبيه مفعل بالصوت المختار" else "Alert enabled with selected sound"
+                                } else {
+                                    if (currentLanguage == AppLanguage.ARABIC) "التنبيه مفعل ويشمل الأذان أو الصوت المختار" else "Alert enabled with Adhan or selected sound"
+                                }
+                            } else {
+                                if (isNonPrayerEvent) {
+                                    if (currentLanguage == AppLanguage.ARABIC) "التنبيه معطل لهذا الوقت" else "Alert disabled for this time"
+                                } else {
+                                    if (currentLanguage == AppLanguage.ARABIC) "التنبيه معطل لهذه الصلاة" else "Alert disabled for this prayer"
+                                }
+                            },
                             style = MaterialTheme.typography.labelSmall,
                             color = AppColors.current.textSubtle,
                             fontSize = 10.sp
@@ -2822,13 +2807,23 @@ private fun CustomPrayerAlarmDialog(
 
                 // Section: Adhan Sound Mode
                 Text(
-                    text = if (currentLanguage == AppLanguage.ARABIC) "صوت التنبيه والأذان:" else "Alert & Adhan Sound:",
+                    text = if (isNonPrayerEvent) {
+                        if (currentLanguage == AppLanguage.ARABIC) "صوت التنبيه:" else "Alert Sound:"
+                    } else {
+                        if (currentLanguage == AppLanguage.ARABIC) "صوت التنبيه والأذان:" else "Alert & Adhan Sound:"
+                    },
                     style = MaterialTheme.typography.bodyMedium,
                     fontWeight = FontWeight.Bold,
                     color = AppColors.current.textTitle
                 )
 
-                AdhanSoundMode.entries.forEach { mode ->
+                val availableModes = if (isNonPrayerEvent) {
+                    listOf(AdhanSoundMode.BEEP_ALERT, AdhanSoundMode.VIBRATE_ONLY)
+                } else {
+                    AdhanSoundMode.entries
+                }
+
+                availableModes.forEach { mode ->
                     val isSelected = selectedSoundMode == mode
                     Row(
                         modifier = Modifier

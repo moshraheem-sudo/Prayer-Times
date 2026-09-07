@@ -51,6 +51,9 @@ object AppUpdateManager {
     private val _updateStatus = MutableStateFlow<UpdateCheckStatus>(UpdateCheckStatus.Idle)
     val updateStatus: StateFlow<UpdateCheckStatus> = _updateStatus.asStateFlow()
 
+    @Volatile
+    private var activeDownloadCall: okhttp3.Call? = null
+
     private val httpClient: OkHttpClient by lazy {
         OkHttpClient.Builder()
             .connectTimeout(20, TimeUnit.SECONDS)
@@ -58,6 +61,29 @@ object AppUpdateManager {
             .followRedirects(true)
             .followSslRedirects(true)
             .build()
+    }
+
+    /**
+     * Compares semantic versions (e.g., "1.0.1" vs "1.0.0", "1.1" vs "1.0.0").
+     * Returns true ONLY if remote is strictly newer than current.
+     */
+    fun isNewerVersion(remoteVersionStr: String, currentVersionStr: String): Boolean {
+        val cleanRemote = remoteVersionStr.trim().removePrefix("v").removePrefix("V")
+        val cleanCurrent = currentVersionStr.trim().removePrefix("v").removePrefix("V")
+
+        if (cleanRemote.isEmpty()) return false
+
+        val remoteParts = cleanRemote.split(".", "-", "_").mapNotNull { it.toIntOrNull() }
+        val currentParts = cleanCurrent.split(".", "-", "_").mapNotNull { it.toIntOrNull() }
+
+        val maxLength = maxOf(remoteParts.size, currentParts.size)
+        for (i in 0 until maxLength) {
+            val r = remoteParts.getOrElse(i) { 0 }
+            val c = currentParts.getOrElse(i) { 0 }
+            if (r > c) return true
+            if (r < c) return false
+        }
+        return false
     }
 
     suspend fun checkForUpdates(context: Context) {
@@ -102,13 +128,13 @@ object AppUpdateManager {
                         }
                     }
 
-                    // Extract numeric version from tag e.g. "v1.1" -> 1.1
                     val cleanTag = tagName.removePrefix("v").removePrefix("V").trim()
-                    val remoteVersionCode = extractVersionCode(cleanTag)
+                    val isNewer = isNewerVersion(cleanTag, currentVersionName)
 
-                    if (downloadUrl != null && remoteVersionCode > currentVersionCode) {
+                    if (downloadUrl != null && isNewer) {
+                        val remoteVersionCode = extractVersionCode(cleanTag)
                         _updateStatus.value = UpdateCheckStatus.UpdateAvailable(
-                            latestVersionName = cleanTag.ifEmpty { "1.1" },
+                            latestVersionName = cleanTag.ifEmpty { "1.0.1" },
                             latestVersionCode = remoteVersionCode,
                             releaseNotes = releaseNotes.ifEmpty { "تحسينات عامة واستقرار أعلى للتطبيق وتحديث مواقيت الصلاة." },
                             downloadUrl = downloadUrl,
@@ -118,8 +144,8 @@ object AppUpdateManager {
                     }
                 }
 
-                // If releases API has no APK or returned 404, check fallback source
-                val fallbackResult = checkFallbackVersion(currentVersionCode)
+                // If releases API has no newer release, check fallback source
+                val fallbackResult = checkFallbackVersion(currentVersionCode, currentVersionName)
                 if (fallbackResult != null) {
                     _updateStatus.value = fallbackResult
                 } else {
@@ -133,19 +159,20 @@ object AppUpdateManager {
     }
 
     private fun extractVersionCode(versionStr: String): Int {
-        val parts = versionStr.split(".")
+        val parts = versionStr.split(".", "-", "_").mapNotNull { it.toIntOrNull() }
         return try {
             when (parts.size) {
-                1 -> parts[0].toInt()
-                2 -> parts[0].toInt() * 10 + parts[1].toInt()
-                else -> parts[0].toInt() * 100 + parts[1].toInt() * 10 + parts[2].toInt()
+                0 -> 1
+                1 -> parts[0]
+                2 -> parts[0] * 1000 + parts[1]
+                else -> parts[0] * 1000000 + parts[1] * 1000 + parts[2]
             }
         } catch (e: Exception) {
             1
         }
     }
 
-    private fun checkFallbackVersion(currentVersionCode: Int): UpdateCheckStatus? {
+    private fun checkFallbackVersion(currentVersionCode: Int, currentVersionName: String): UpdateCheckStatus? {
         try {
             val req = Request.Builder()
                 .url(FALLBACK_RAW_VERSION_URL)
@@ -160,9 +187,9 @@ object AppUpdateManager {
             val nameRegex = Regex("""versionName\s*=\s*"([^"]+)"""")
 
             val remoteCode = codeRegex.find(content)?.groupValues?.get(1)?.toIntOrNull() ?: currentVersionCode
-            val remoteName = nameRegex.find(content)?.groupValues?.get(1) ?: "1.0"
+            val remoteName = nameRegex.find(content)?.groupValues?.get(1) ?: currentVersionName
 
-            if (remoteCode > currentVersionCode) {
+            if (isNewerVersion(remoteName, currentVersionName)) {
                 return UpdateCheckStatus.UpdateAvailable(
                     latestVersionName = remoteName,
                     latestVersionCode = remoteCode,
@@ -177,20 +204,38 @@ object AppUpdateManager {
         return null
     }
 
+    fun cancelDownload() {
+        try {
+            activeDownloadCall?.cancel()
+            activeDownloadCall = null
+        } catch (e: Exception) {
+            Log.e(TAG, "Error cancelling download: ${e.message}")
+        }
+        _updateStatus.value = UpdateCheckStatus.Idle
+    }
+
     suspend fun downloadAndInstallUpdate(context: Context, downloadUrl: String, apkFileName: String) {
+        cancelDownload()
         _updateStatus.value = UpdateCheckStatus.Downloading(0)
         withContext(Dispatchers.IO) {
+            val updatesDir = File(context.cacheDir, "updates")
+            if (!updatesDir.exists()) updatesDir.mkdirs()
+
+            val apkFile = File(updatesDir, apkFileName)
+            if (apkFile.exists()) apkFile.delete()
+
             try {
-                val updatesDir = File(context.cacheDir, "updates")
-                if (!updatesDir.exists()) updatesDir.mkdirs()
-
-                val apkFile = File(updatesDir, apkFileName)
-                if (apkFile.exists()) apkFile.delete()
-
                 val request = Request.Builder().url(downloadUrl).build()
-                val response = httpClient.newCall(request).execute()
+                val call = httpClient.newCall(request)
+                activeDownloadCall = call
+                val response = call.execute()
 
                 if (!response.isSuccessful) {
+                    if (call.isCanceled()) {
+                        apkFile.delete()
+                        _updateStatus.value = UpdateCheckStatus.Idle
+                        return@withContext
+                    }
                     _updateStatus.value = UpdateCheckStatus.Error("فشل تحميل ملف التحديث (رمز الخطأ: ${response.code})")
                     return@withContext
                 }
@@ -205,27 +250,44 @@ object AppUpdateManager {
                 var totalRead = 0L
                 var lastUpdate = 0L
 
-                while (inputStream.read(buffer).also { bytesRead = it } != -1) {
-                    outputStream.write(buffer, 0, bytesRead)
-                    totalRead += bytesRead
-                    if (totalBytes > 0) {
-                        val progress = ((totalRead * 100) / totalBytes).toInt()
-                        val now = System.currentTimeMillis()
-                        if (now - lastUpdate > 200) {
-                            lastUpdate = now
-                            _updateStatus.value = UpdateCheckStatus.Downloading(
-                                progressPercent = progress.coerceIn(0, 100),
-                                bytesRead = totalRead,
-                                totalBytes = totalBytes
-                            )
+                try {
+                    while (inputStream.read(buffer).also { bytesRead = it } != -1) {
+                        if (call.isCanceled() || activeDownloadCall == null) {
+                            outputStream.close()
+                            inputStream.close()
+                            apkFile.delete()
+                            _updateStatus.value = UpdateCheckStatus.Idle
+                            return@withContext
+                        }
+
+                        outputStream.write(buffer, 0, bytesRead)
+                        totalRead += bytesRead
+                        if (totalBytes > 0) {
+                            val progress = ((totalRead * 100) / totalBytes).toInt()
+                            val now = System.currentTimeMillis()
+                            if (now - lastUpdate > 150) {
+                                lastUpdate = now
+                                _updateStatus.value = UpdateCheckStatus.Downloading(
+                                    progressPercent = progress.coerceIn(0, 100),
+                                    bytesRead = totalRead,
+                                    totalBytes = totalBytes
+                                )
+                            }
                         }
                     }
+                    outputStream.flush()
+                } finally {
+                    try { outputStream.close() } catch (_: Exception) {}
+                    try { inputStream.close() } catch (_: Exception) {}
+                    try { response.close() } catch (_: Exception) {}
+                    activeDownloadCall = null
                 }
 
-                outputStream.flush()
-                outputStream.close()
-                inputStream.close()
-                response.close()
+                if (call.isCanceled()) {
+                    apkFile.delete()
+                    _updateStatus.value = UpdateCheckStatus.Idle
+                    return@withContext
+                }
 
                 if (apkFile.length() > 500 * 1024) { // Valid APK minimum size
                     if (canInstallPackages(context)) {
@@ -237,11 +299,22 @@ object AppUpdateManager {
                         _updateStatus.value = UpdateCheckStatus.PermissionRequired(apkFile)
                     }
                 } else {
+                    apkFile.delete()
                     _updateStatus.value = UpdateCheckStatus.Error("ملف التحديث المحمل غير مكتمل")
                 }
             } catch (e: Exception) {
-                Log.e(TAG, "Download update failed: ${e.message}", e)
-                _updateStatus.value = UpdateCheckStatus.Error("تعذر إكمال تحميل التحديث: ${e.localizedMessage}")
+                activeDownloadCall = null
+                apkFile.delete()
+                val isCancelError = e is java.io.IOException && (
+                    e.message?.contains("Canceled", ignoreCase = true) == true ||
+                    e.message?.contains("Socket closed", ignoreCase = true) == true
+                )
+                if (isCancelError) {
+                    _updateStatus.value = UpdateCheckStatus.Idle
+                } else {
+                    Log.e(TAG, "Download update failed: ${e.message}", e)
+                    _updateStatus.value = UpdateCheckStatus.Error("تعذر إكمال تحميل التحديث: ${e.localizedMessage}")
+                }
             }
         }
     }

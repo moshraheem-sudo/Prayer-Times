@@ -21,21 +21,33 @@ import com.example.data.model.PrayerType
 
 object PrayerNotificationHelper {
 
-    const val CHANNEL_ID = "prayer_times_alerts_channel_v3"
-    const val CHANNEL_NAME = "تنبيهات مواقيت الصلاة والأذان (فائق الأهمية)"
-    const val CHANNEL_DESC = "تنبيهات ورنين قوي ومباشر عند حلول موعد كل صلاة لإيقاظ وتنبيه المستخدم بدقة"
+    const val CHANNEL_ID = "prayer_times_alerts_channel_v4"
+    const val CHANNEL_NAME = "إشعارات مواقيت الصلاة"
+    const val CHANNEL_DESC = "إشعارات مواقيت الصلاة والمناسبات الدينية"
+
+    const val PRE_ADHAN_CHANNEL_ID = "prayer_pre_reminders_channel_v1"
+    const val PRE_ADHAN_CHANNEL_NAME = "تنبيهات الاستعداد للصلاة (قبل الأذان)"
+    const val PRE_ADHAN_CHANNEL_DESC = "تنبيهات عادية تسبق موعد الأذان بـ 10 دقائق ثم 5 دقائق للاستعداد والوضوء"
+
+    const val SILENT_CHANNEL_ID = "prayer_silent_updates_channel"
+    const val SILENT_CHANNEL_NAME = "تحديثات الخلفية"
+    const val SILENT_CHANNEL_DESC = "إشعارات التحديثات الصامتة للتقويم والموقع"
 
     fun createNotificationChannel(context: Context) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val soundUri: Uri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
-                ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
+            val notificationManager =
+                context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
 
-            val audioAttributes = AudioAttributes.Builder()
-                .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
-                .setUsage(AudioAttributes.USAGE_ALARM)
-                .setFlags(AudioAttributes.FLAG_AUDIBILITY_ENFORCED)
-                .build()
+            // Clean up legacy notification channels that had loud ringtones assigned
+            try {
+                notificationManager.deleteNotificationChannel("prayer_times_alerts_channel_v3")
+                notificationManager.deleteNotificationChannel("prayer_times_alerts_channel_v2")
+                notificationManager.deleteNotificationChannel("prayer_times_alerts_channel")
+            } catch (e: Exception) {
+                // ignore
+            }
 
+            // 1. Silent channel for exact adhan time to prevent ringtone conflict with Adhan voice
             val channel = NotificationChannel(
                 CHANNEL_ID,
                 CHANNEL_NAME,
@@ -43,18 +55,119 @@ object PrayerNotificationHelper {
             ).apply {
                 description = CHANNEL_DESC
                 enableLights(true)
-                lightColor = Color.RED
-                enableVibration(true)
-                vibrationPattern = longArrayOf(0, 450, 150, 450, 150, 450, 300, 650, 200, 650)
-                setSound(soundUri, audioAttributes)
+                lightColor = Color.CYAN
+                enableVibration(false)
+                setSound(null, null) // Completely silent channel to prevent ringtone conflict with Adhan
                 lockscreenVisibility = NotificationCompat.VISIBILITY_PUBLIC
-                setBypassDnd(true)
             }
-
-            val notificationManager =
-                context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
             notificationManager.createNotificationChannel(channel)
+
+            // 2. Pre-Adhan notification channel for 10m and 5m before Adhan with standard notification chime
+            val defaultSound = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
+            val audioAttributes = AudioAttributes.Builder()
+                .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                .setUsage(AudioAttributes.USAGE_NOTIFICATION)
+                .build()
+
+            val preAdhanChannel = NotificationChannel(
+                PRE_ADHAN_CHANNEL_ID,
+                PRE_ADHAN_CHANNEL_NAME,
+                NotificationManager.IMPORTANCE_HIGH
+            ).apply {
+                description = PRE_ADHAN_CHANNEL_DESC
+                enableLights(true)
+                lightColor = Color.CYAN
+                enableVibration(true)
+                setSound(defaultSound, audioAttributes)
+                lockscreenVisibility = NotificationCompat.VISIBILITY_PUBLIC
+            }
+            notificationManager.createNotificationChannel(preAdhanChannel)
+
+            // 3. Low priority silent channel for background updates (Hijri Sync)
+            val silentChannel = NotificationChannel(
+                SILENT_CHANNEL_ID,
+                SILENT_CHANNEL_NAME,
+                NotificationManager.IMPORTANCE_LOW
+            ).apply {
+                description = SILENT_CHANNEL_DESC
+                enableLights(false)
+                enableVibration(false)
+                setSound(null, null)
+                setShowBadge(false)
+            }
+            notificationManager.createNotificationChannel(silentChannel)
         }
+    }
+
+    /**
+     * Shows regular gentle pre-adhan notification (at -10 minutes and -5 minutes)
+     * with standard notification sound and preparation reminder.
+     */
+    fun showPreAdhanReminderNotification(
+        context: Context,
+        prayerType: PrayerType,
+        cityName: String,
+        offsetMinutes: Int
+    ) {
+        createNotificationChannel(context)
+
+        val cityDisplay = cityName.ifBlank { "النجف الأشرف" }
+        val remainingMinutes = -offsetMinutes
+
+        val title = "اقترب موعد أذان ${prayerType.arName}"
+        val body = when (remainingMinutes) {
+            10 -> "يتبقى 10 دقائق لرفع أذان ${prayerType.arName} في $cityDisplay • حان وقت الاستعداد والوضوء"
+            5 -> "يتبقى 5 دقائق لرفع أذان ${prayerType.arName} في $cityDisplay • تهيأ للصلاة المباركة"
+            else -> "يتبقى $remainingMinutes دقائق لرفع أذان ${prayerType.arName} في $cityDisplay"
+        }
+
+        val intent = Intent(context, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+        }
+
+        val iterIndex = if (remainingMinutes == 10) 1 else 2
+        val pendingIntent = PendingIntent.getActivity(
+            context,
+            prayerType.ordinal * 10 + iterIndex + 5000,
+            intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        val appIconBitmap = try {
+            BitmapFactory.decodeResource(context.resources, R.drawable.ic_app_icon)
+        } catch (e: Exception) {
+            null
+        }
+
+        val defaultSound = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
+
+        val notification = NotificationCompat.Builder(context, PRE_ADHAN_CHANNEL_ID)
+            .setSmallIcon(R.drawable.ic_stat_prayer)
+            .apply {
+                if (appIconBitmap != null) {
+                    setLargeIcon(appIconBitmap)
+                }
+            }
+            .setContentTitle(title)
+            .setContentText(body)
+            .setStyle(
+                NotificationCompat.BigTextStyle()
+                    .setBigContentTitle(title)
+                    .bigText(body)
+            )
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+            .setAutoCancel(true)
+            .setSound(defaultSound)
+            .setDefaults(NotificationCompat.DEFAULT_SOUND or NotificationCompat.DEFAULT_VIBRATE)
+            .setContentIntent(pendingIntent)
+            .setColor(0xFF14B8A6.toInt())
+            .build()
+
+        val notificationManager =
+            context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        val notificationId = prayerType.ordinal * 10 + iterIndex + 3000
+        notificationManager.notify(notificationId, notification)
     }
 
     fun showPrayerNotification(
@@ -62,7 +175,7 @@ object PrayerNotificationHelper {
         prayerType: PrayerType,
         timeFormatted: String,
         cityName: String,
-        playAlertSound: Boolean = true,
+        playAlertSound: Boolean = false,
         repeatIteration: Int = 0,
         offsetMinutes: Int = 0
     ) {
@@ -79,17 +192,18 @@ object PrayerNotificationHelper {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
-        val soundUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
-            ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
-
         val cityDisplay = cityName.ifBlank { "النجف الأشرف" }
-        val messageText = when {
-            offsetMinutes < 0 -> "تنبيه مسبق: يتبقى ${-offsetMinutes} دقائق على موعد أذان ${prayerType.arName} في $cityDisplay"
-            repeatIteration > 0 -> "تذكير متكرر ($repeatIteration): حان موعد أذان ${prayerType.arName} في مدينة $cityDisplay ($timeFormatted)"
-            else -> "حان الآن موعد أذان ${prayerType.arName} في مدينة $cityDisplay"
+
+        val titleText = when {
+            offsetMinutes < 0 -> "اقتراب موعد الصلاة"
+            repeatIteration > 0 -> "تذكير: أذان ${prayerType.arName}"
+            else -> "أذان ${prayerType.arName}"
         }
-        val boldMessage = SpannableString(messageText).apply {
-            setSpan(StyleSpan(Typeface.BOLD), 0, length, SpannableString.SPAN_EXCLUSIVE_EXCLUSIVE)
+
+        val messageText = when {
+            offsetMinutes < 0 -> "يتبقى ${-offsetMinutes} دقائق على أذان ${prayerType.arName} في $cityDisplay"
+            repeatIteration > 0 -> "حان موعد الأذان في $cityDisplay ($timeFormatted)"
+            else -> "حان الآن موعد الأذان في $cityDisplay"
         }
 
         val appIconBitmap = try {
@@ -105,26 +219,17 @@ object PrayerNotificationHelper {
                     setLargeIcon(appIconBitmap)
                 }
             }
-            .setContentTitle(boldMessage)
-            .setContentText(boldMessage)
+            .setContentTitle(titleText)
+            .setContentText(messageText)
             .setStyle(
                 NotificationCompat.BigTextStyle()
-                    .bigText(boldMessage)
+                    .bigText(messageText)
             )
-            .setPriority(NotificationCompat.PRIORITY_MAX)
-            .setCategory(NotificationCompat.CATEGORY_ALARM)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .setAutoCancel(true)
-            .apply {
-                if (playAlertSound) {
-                    setSound(soundUri)
-                } else {
-                    setSound(null)
-                }
-            }
-            .setVibrate(longArrayOf(0, 450, 150, 450, 150, 450, 300, 650, 200, 650))
-            .setLights(Color.RED, 500, 500)
-            .setFullScreenIntent(pendingIntent, true)
+            .setSound(null)
+            .setSilent(true)
             .setContentIntent(pendingIntent)
             .setColor(0xFF14B8A6.toInt())
             .build()
@@ -132,80 +237,12 @@ object PrayerNotificationHelper {
         val notificationManager =
             context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         notificationManager.notify(prayerType.ordinal * 10 + repeatIteration + 100, notification)
-
-        // Trigger vibration
-        try {
-            AudioPlayerHelper.vibratePattern(context)
-        } catch (e: Exception) {
-            // ignore
-        }
     }
 
     fun showTestNotification(context: Context) {
-        createNotificationChannel(context)
-
-        val intent = Intent(context, MainActivity::class.java).apply {
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
-        }
-
-        val pendingIntent = PendingIntent.getActivity(
-            context,
-            999,
-            intent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
-
-        val soundUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
-
         val repo = com.example.data.repository.PrayerTimesRepository(context)
-        val cityName = repo.selectedCity.value.nameAr.ifBlank { "النجف الأشرف" }
-        val messageText = "حان الآن موعد أذان المغرب في مدينة $cityName"
-        val boldMessage = SpannableString(messageText).apply {
-            setSpan(StyleSpan(Typeface.BOLD), 0, length, SpannableString.SPAN_EXCLUSIVE_EXCLUSIVE)
-        }
-
-        val appIconBitmap = try {
-            BitmapFactory.decodeResource(context.resources, R.drawable.ic_app_icon)
-        } catch (e: Exception) {
-            null
-        }
-
-        val notification = NotificationCompat.Builder(context, CHANNEL_ID)
-            .setSmallIcon(R.drawable.ic_stat_prayer)
-            .apply {
-                if (appIconBitmap != null) {
-                    setLargeIcon(appIconBitmap)
-                }
-            }
-            .setContentTitle(boldMessage)
-            .setContentText(boldMessage)
-            .setStyle(
-                NotificationCompat.BigTextStyle()
-                    .bigText(boldMessage)
-            )
-            .setPriority(NotificationCompat.PRIORITY_MAX)
-            .setCategory(NotificationCompat.CATEGORY_ALARM)
-            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
-            .setAutoCancel(true)
-            .setSound(soundUri)
-            .setVibrate(longArrayOf(0, 450, 150, 450, 150, 450, 300, 650, 200, 650))
-            .setLights(Color.RED, 500, 500)
-            .setFullScreenIntent(pendingIntent, true)
-            .setContentIntent(pendingIntent)
-            .setColor(0xFF14B8A6.toInt())
-            .build()
-
-        val notificationManager =
-            context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        notificationManager.notify(999, notification)
-
-        try {
-            AudioPlayerHelper.vibratePattern(context)
-            // Play muezzin preview directly
-            AdhanAudioService.previewMuezzin(context, repo.selectedMuezzin.value)
-        } catch (e: Exception) {
-            // ignore
-        }
+        // Directly preview the Adhan audio cleanly without any conflicting alert ringtones
+        AdhanAudioService.previewMuezzin(context, repo.selectedMuezzin.value)
     }
 
     fun showHijriSyncNotification(context: Context, hijriDate: String, isAuto: Boolean = true) {
@@ -232,7 +269,7 @@ object PrayerNotificationHelper {
             null
         }
 
-        val notification = NotificationCompat.Builder(context, CHANNEL_ID)
+        val notification = NotificationCompat.Builder(context, SILENT_CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_stat_prayer)
             .apply {
                 if (appIconBitmap != null) {
@@ -247,7 +284,8 @@ object PrayerNotificationHelper {
                     .bigText(bigText)
                     .setSummaryText("التقويم الهجري")
             )
-            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .setSilent(true)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .setAutoCancel(true)
             .setContentIntent(pendingIntent)

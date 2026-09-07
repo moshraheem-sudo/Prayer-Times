@@ -43,7 +43,15 @@ object PrayerNotificationScheduler {
                 continue
             }
 
-            // Primary alarm at exact prayer time
+            val isAdhanPrayer = prayerType in listOf(
+                PrayerType.FAJR,
+                PrayerType.DHUHR,
+                PrayerType.ASR,
+                PrayerType.MAGHRIB,
+                PrayerType.ISHA
+            )
+
+            // Primary alarm at exact prayer time (offset 0: pure Adhan audio without ringing)
             scheduleSinglePrayerAlarm(
                 context = context,
                 alarmManager = alarmManager,
@@ -54,11 +62,34 @@ object PrayerNotificationScheduler {
                 offsetMinutes = 0
             )
 
-            // Additional repetitions / pre-alarms based on AlarmRepeatMode
+            // Pre-Adhan notifications: regular gentle notifications 10 minutes and 5 minutes before Adhan
+            if (isAdhanPrayer) {
+                // 10 minutes before
+                scheduleSinglePrayerAlarm(
+                    context = context,
+                    alarmManager = alarmManager,
+                    prayerType = prayerType,
+                    timeStr = timeStr,
+                    cityName = cityName,
+                    repeatIteration = 1,
+                    offsetMinutes = -10
+                )
+                // 5 minutes before
+                scheduleSinglePrayerAlarm(
+                    context = context,
+                    alarmManager = alarmManager,
+                    prayerType = prayerType,
+                    timeStr = timeStr,
+                    cityName = cityName,
+                    repeatIteration = 2,
+                    offsetMinutes = -5
+                )
+            }
+
+            // Additional repetitions / follow-up alarms based on AlarmRepeatMode
             when (config.repeatMode) {
-                AlarmRepeatMode.ONCE -> {
-                    // Cancel any previous repeat alarms
-                    cancelRepeatAlarms(context, alarmManager, prayerType)
+                AlarmRepeatMode.ONCE, AlarmRepeatMode.REMIND_BEFORE_10 -> {
+                    cancelPostRepeatAlarms(context, alarmManager, prayerType)
                 }
                 AlarmRepeatMode.REPEAT_TWICE -> {
                     scheduleSinglePrayerAlarm(
@@ -67,7 +98,7 @@ object PrayerNotificationScheduler {
                         prayerType = prayerType,
                         timeStr = timeStr,
                         cityName = cityName,
-                        repeatIteration = 1,
+                        repeatIteration = 3,
                         offsetMinutes = 5
                     )
                 }
@@ -78,7 +109,7 @@ object PrayerNotificationScheduler {
                         prayerType = prayerType,
                         timeStr = timeStr,
                         cityName = cityName,
-                        repeatIteration = 1,
+                        repeatIteration = 3,
                         offsetMinutes = 5
                     )
                     scheduleSinglePrayerAlarm(
@@ -87,19 +118,8 @@ object PrayerNotificationScheduler {
                         prayerType = prayerType,
                         timeStr = timeStr,
                         cityName = cityName,
-                        repeatIteration = 2,
+                        repeatIteration = 4,
                         offsetMinutes = 10
-                    )
-                }
-                AlarmRepeatMode.REMIND_BEFORE_10 -> {
-                    scheduleSinglePrayerAlarm(
-                        context = context,
-                        alarmManager = alarmManager,
-                        prayerType = prayerType,
-                        timeStr = timeStr,
-                        cityName = cityName,
-                        repeatIteration = 1,
-                        offsetMinutes = -10
                     )
                 }
             }
@@ -192,7 +212,7 @@ object PrayerNotificationScheduler {
         alarmManager: AlarmManager,
         prayerType: PrayerType
     ) {
-        for (i in 0..3) {
+        for (i in 0..5) {
             val intent = Intent(context, PrayerAlarmReceiver::class.java).apply {
                 action = "com.example.ACTION_PRAYER_ALARM_${prayerType.name}_$i"
             }
@@ -209,12 +229,12 @@ object PrayerNotificationScheduler {
         }
     }
 
-    private fun cancelRepeatAlarms(
+    private fun cancelPostRepeatAlarms(
         context: Context,
         alarmManager: AlarmManager,
         prayerType: PrayerType
     ) {
-        for (i in 1..3) {
+        for (i in 3..5) {
             val intent = Intent(context, PrayerAlarmReceiver::class.java).apply {
                 action = "com.example.ACTION_PRAYER_ALARM_${prayerType.name}_$i"
             }

@@ -563,35 +563,24 @@ fun HomeScreen(
 
         // Section Title: 5 Prayers & Phenomena
         item {
-            Row(
+            Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(top = 8.dp, bottom = 4.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
+                    .padding(top = 12.dp, bottom = 8.dp),
+                contentAlignment = Alignment.Center
             ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .width(4.dp)
-                            .height(16.dp)
-                            .clip(RoundedCornerShape(2.dp))
-                            .background(AppColors.current.tealAccentLight)
-                    )
-                    Text(
-                        text = AppStrings.prayerSectionTitle(currentLanguage, cityName),
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = AppColors.current.textTitle,
-                        fontSize = 16.sp
-                    )
-                }
+                Text(
+                    text = AppStrings.prayerSectionTitle(currentLanguage, cityName),
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = AppColors.current.textTitle,
+                    fontSize = 16.sp,
+                    textAlign = TextAlign.Center
+                )
 
                 if (isBackgroundSyncing) {
                     Row(
+                        modifier = Modifier.align(Alignment.CenterEnd),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
@@ -617,62 +606,54 @@ fun HomeScreen(
                     type = PrayerType.FAJR,
                     rawTime = prayerData.fajir,
                     emoji = "🌅",
-                    icon = Icons.Default.Bedtime,
-                    description = AppStrings.prayerDescription(PrayerType.FAJR, currentLanguage)
+                    icon = Icons.Default.Bedtime
                 ),
                 PrayerCardInfo(
                     type = PrayerType.SUNRISE,
                     rawTime = prayerData.sunrise,
                     emoji = "☀️",
                     icon = Icons.Default.Brightness5,
-                    description = AppStrings.prayerDescription(PrayerType.SUNRISE, currentLanguage),
                     isMuted = true
                 ),
                 PrayerCardInfo(
                     type = PrayerType.DHUHR,
                     rawTime = prayerData.doher,
                     emoji = "☀️",
-                    icon = Icons.Default.WbSunny,
-                    description = AppStrings.prayerDescription(PrayerType.DHUHR, currentLanguage)
+                    icon = Icons.Default.WbSunny
                 ),
                 if (prayerData.asr.isNotBlank()) {
                     PrayerCardInfo(
                         type = PrayerType.ASR,
                         rawTime = prayerData.asr,
                         emoji = "🌤️",
-                        icon = Icons.Default.WbSunny,
-                        description = AppStrings.prayerDescription(PrayerType.ASR, currentLanguage)
+                        icon = Icons.Default.WbSunny
                     )
                 } else null,
                 PrayerCardInfo(
                     type = PrayerType.SUNSET,
                     rawTime = prayerData.sunset,
                     emoji = "🌇",
-                    icon = Icons.Default.Brightness6,
-                    description = AppStrings.prayerDescription(PrayerType.SUNSET, currentLanguage)
+                    icon = Icons.Default.Brightness6
                 ),
                 PrayerCardInfo(
                     type = PrayerType.MAGHRIB,
                     rawTime = prayerData.maghrib,
                     emoji = "🌙",
-                    icon = Icons.Default.Mosque,
-                    description = AppStrings.prayerDescription(PrayerType.MAGHRIB, currentLanguage)
+                    icon = Icons.Default.Mosque
                 ),
                 if (prayerData.isha.isNotBlank()) {
                     PrayerCardInfo(
                         type = PrayerType.ISHA,
                         rawTime = prayerData.isha,
                         emoji = "✨",
-                        icon = Icons.Default.Bedtime,
-                        description = AppStrings.prayerDescription(PrayerType.ISHA, currentLanguage)
+                        icon = Icons.Default.Bedtime
                     )
                 } else null,
                 PrayerCardInfo(
                     type = PrayerType.MIDNIGHT,
                     rawTime = prayerData.midnight,
                     emoji = "🌌",
-                    icon = Icons.Default.AccessTime,
-                    description = AppStrings.prayerDescription(PrayerType.MIDNIGHT, currentLanguage)
+                    icon = Icons.Default.AccessTime
                 )
             )
 
@@ -704,7 +685,7 @@ data class PrayerCardInfo(
     val rawTime: String,
     val emoji: String,
     val icon: ImageVector,
-    val description: String,
+    val description: String = "",
     val isMuted: Boolean = false
 )
 
@@ -804,25 +785,14 @@ fun SophisticatedPrayerItemCard(
 
                     Spacer(modifier = Modifier.width(12.dp))
 
-                    Column(
-                        modifier = Modifier.weight(1f),
-                        verticalArrangement = Arrangement.spacedBy(2.dp)
-                    ) {
-                        Text(
-                            text = AppStrings.prayerName(prayerInfo.type, currentLanguage),
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = if (isNext) FontWeight.Bold else FontWeight.Medium,
-                            color = if (isNext) AppColors.current.tealAccentLight else if (prayerInfo.isMuted) AppColors.current.textMuted else AppColors.current.textTitle,
-                            fontSize = 16.sp
-                        )
-                        Text(
-                            text = prayerInfo.description,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = AppColors.current.textSubtle,
-                            fontSize = 11.sp,
-                            maxLines = 1
-                        )
-                    }
+                    Text(
+                        text = AppStrings.prayerName(prayerInfo.type, currentLanguage),
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = if (isNext) FontWeight.Bold else FontWeight.Medium,
+                        color = if (isNext) AppColors.current.tealAccentLight else if (prayerInfo.isMuted) AppColors.current.textMuted else AppColors.current.textTitle,
+                        fontSize = 16.sp,
+                        modifier = Modifier.weight(1f)
+                    )
                 }
 
                 Spacer(modifier = Modifier.width(8.dp))

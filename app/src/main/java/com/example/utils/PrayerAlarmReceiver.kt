@@ -19,7 +19,7 @@ class PrayerAlarmReceiver : BroadcastReceiver() {
             "PrayerTimes:AlarmWakeLock"
         )
         try {
-            wakeLock?.acquire(15000) // 15 seconds max
+            wakeLock?.acquire(45000) // 45 seconds to cover service start & buffering
         } catch (e: Exception) {
             // ignore
         }
@@ -68,24 +68,21 @@ class PrayerAlarmReceiver : BroadcastReceiver() {
 
                 val shouldPlayAdhanAudio = isAdhanPrayer &&
                         isAudioGloballyEnabled &&
-                        (soundMode == AdhanSoundMode.FULL_ADHAN || soundMode == AdhanSoundMode.SHORT_TAKBIR)
+                        (soundMode == AdhanSoundMode.FULL_ADHAN || soundMode == AdhanSoundMode.SHORT_TAKBIR) &&
+                        offsetMinutes >= 0
 
-                val playAlertTone = (soundMode == AdhanSoundMode.BEEP_ALERT) ||
-                        (!isAudioGloballyEnabled && soundMode != AdhanSoundMode.VIBRATE_ONLY)
-
-                // Show top banner/lockscreen notification
-                PrayerNotificationHelper.showPrayerNotification(
-                    context = context,
-                    prayerType = prayerType,
-                    timeFormatted = formattedTime,
-                    cityName = cityName,
-                    playAlertSound = playAlertTone,
-                    repeatIteration = repeatIteration,
-                    offsetMinutes = offsetMinutes
-                )
-
-                // Play custom adhan audio in foreground service if enabled
-                if (shouldPlayAdhanAudio) {
+                if (offsetMinutes < 0) {
+                    // Normal notification chime 10m & 5m before Adhan with preparation reminder
+                    PrayerNotificationHelper.showPreAdhanReminderNotification(
+                        context = context,
+                        prayerType = prayerType,
+                        cityName = cityName,
+                        offsetMinutes = offsetMinutes
+                    )
+                } else if (shouldPlayAdhanAudio) {
+                    // Exact prayer time: Start ONLY the Adhan audio foreground service directly!
+                    // No separate ringing notification, no conflicting alert tone, no duplicate banners.
+                    // AdhanAudioService provides the single clean playback notification with the stop button.
                     AdhanAudioService.startAdhan(
                         context = context,
                         muezzin = muezzin,
@@ -95,18 +92,30 @@ class PrayerAlarmReceiver : BroadcastReceiver() {
                         soundMode = soundMode,
                         volumePercent = config.customVolumePercent
                     )
-                } else if (soundMode == AdhanSoundMode.VIBRATE_ONLY) {
-                    AudioPlayerHelper.vibratePattern(context)
-                } else if (soundMode == AdhanSoundMode.BEEP_ALERT) {
-                    AudioPlayerHelper.playBeep()
-                    AudioPlayerHelper.vibratePattern(context)
+                } else {
+                    // Non-adhan prayer (e.g. Sunrise / Midnight) or non-audio modes (Vibrate only / Beep alert)
+                    if (soundMode == AdhanSoundMode.VIBRATE_ONLY) {
+                        AudioPlayerHelper.vibratePattern(context)
+                    } else if (soundMode == AdhanSoundMode.BEEP_ALERT) {
+                        AudioPlayerHelper.playBeep()
+                    }
+
+                    PrayerNotificationHelper.showPrayerNotification(
+                        context = context,
+                        prayerType = prayerType,
+                        timeFormatted = formattedTime,
+                        cityName = cityName,
+                        playAlertSound = false,
+                        repeatIteration = repeatIteration,
+                        offsetMinutes = offsetMinutes
+                    )
                 }
             }
 
-            // Reschedule alarms for upcoming days if prayer data exists
+            // Reschedule alarms for upcoming days if prayer data exists (reschedule on exact prayer time)
             val cachedData = repository.prayerTimesData.value
             val city = repository.selectedCity.value
-            if (cachedData != null) {
+            if (cachedData != null && offsetMinutes == 0) {
                 PrayerNotificationScheduler.scheduleAllPrayerNotifications(
                     context = context,
                     prayerData = cachedData,

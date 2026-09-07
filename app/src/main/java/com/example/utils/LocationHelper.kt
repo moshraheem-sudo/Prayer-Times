@@ -79,7 +79,33 @@ object LocationHelper {
     }
 
     @SuppressLint("MissingPermission")
-    suspend fun getDeviceLocation(context: Context): CityLocation? = withContext(Dispatchers.IO) {
+    suspend fun getDeviceLocation(context: Context, forceRefresh: Boolean = false): CityLocation? = withContext(Dispatchers.IO) {
+        val prefs = context.getSharedPreferences("location_cache", Context.MODE_PRIVATE)
+        val lastUpdateTime = prefs.getLong("last_update_time", 0L)
+        val cachedGpsJson = prefs.getString("last_gps_city", null)
+        val now = System.currentTimeMillis()
+
+        // --- BATTERY OPTIMIZATION ---
+        // If not forced, check if we have a very fresh cache (e.g. < 2 hours). If so, skip GPS entirely.
+        if (!forceRefresh && cachedGpsJson != null && (now - lastUpdateTime) < 2 * 60 * 60 * 1000L) {
+            try {
+                val json = JSONObject(cachedGpsJson)
+                return@withContext CityLocation(
+                    id = json.getString("id"),
+                    nameAr = json.getString("nameAr"),
+                    nameEn = json.getString("nameEn"),
+                    countryAr = json.getString("countryAr"),
+                    latitude = json.getDouble("latitude"),
+                    longitude = json.getDouble("longitude"),
+                    timezone = json.getString("timezone"),
+                    isHolyCity = json.optBoolean("isHolyCity", false),
+                    province = json.optString("province", "")
+                )
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to parse cached location", e)
+            }
+        }
+
         var detectedLat: Double? = null
         var detectedLon: Double? = null
         var sourceLabel = "GPS"
@@ -95,6 +121,9 @@ object LocationHelper {
                     val providers = locationManager.getProviders(true)
                     for (provider in providers) {
                         val l = locationManager.getLastKnownLocation(provider) ?: continue
+                        // Filter out extremely stale passive locations (> 4 hours)
+                        if (now - l.time > 4 * 60 * 60 * 1000L) continue
+
                         if (bestLocation == null || (l.accuracy > 0 && l.accuracy < bestLocation.accuracy)) {
                             bestLocation = l
                         }
@@ -103,8 +132,8 @@ object LocationHelper {
                     Log.e(TAG, "Error reading last known location", e)
                 }
 
-                // If no last known location, request active fast update
-                if (bestLocation == null) {
+                // If no recent last known location, request active fast update
+                if (bestLocation == null || forceRefresh) {
                     bestLocation = requestLocationUpdateFast(locationManager)
                 }
 
@@ -134,9 +163,7 @@ object LocationHelper {
             return@withContext PredefinedCities.defaultCity
         }
 
-        // 4. Check Cache
-        val prefs = context.getSharedPreferences("location_cache", Context.MODE_PRIVATE)
-        val cachedGpsJson = prefs.getString("last_gps_city", null)
+        // 4. Check Cache against new coordinates
         if (cachedGpsJson != null) {
             try {
                 val json = JSONObject(cachedGpsJson)
@@ -152,8 +179,10 @@ object LocationHelper {
                     province = json.optString("province", "")
                 )
                 val cacheDist = distanceBetweenKm(detectedLat, detectedLon, cachedCity.latitude, cachedCity.longitude)
+                // Battery Optimization: if user is still in the same 10km area, reuse cache to avoid reverse geocoding
+                // and reduce data consumption
                 if (cacheDist <= 10.0) {
-                    // We are within 10km of the cached location, reuse it
+                    prefs.edit().putLong("last_update_time", now).apply()
                     return@withContext cachedCity
                 }
             } catch (e: Exception) {
@@ -199,7 +228,11 @@ object LocationHelper {
             put("isHolyCity", resultCity.isHolyCity)
             put("province", resultCity.province)
         }
-        prefs.edit().putString("last_gps_city", resultJson.toString()).apply()
+        prefs.edit()
+            .putString("last_gps_city", resultJson.toString())
+            .putLong("last_update_time", now)
+            .apply()
+        
         return@withContext resultCity
     }
 

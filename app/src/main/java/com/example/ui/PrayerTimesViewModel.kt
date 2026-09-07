@@ -129,13 +129,13 @@ class PrayerTimesViewModel(application: Application) : AndroidViewModel(applicat
         }
     }
 
-    fun locateViaGps(context: android.content.Context, onComplete: ((Boolean) -> Unit)? = null) {
+    fun locateViaGps(context: android.content.Context, forceRefresh: Boolean = false, onComplete: ((Boolean) -> Unit)? = null) {
         viewModelScope.launch {
             val lang = appLanguage.value
             _isGpsLocating.value = true
             _gpsStatusMessage.value = com.example.utils.AppStrings.gpsStatusLocating(lang)
             try {
-                val location = com.example.utils.LocationHelper.getDeviceLocation(context)
+                val location = com.example.utils.LocationHelper.getDeviceLocation(context, forceRefresh)
                     ?: com.example.data.model.PredefinedCities.defaultCity
                 val cityName = if (lang == AppLanguage.ARABIC) location.nameAr else location.nameEn
                 _gpsStatusMessage.value = com.example.utils.AppStrings.gpsStatusDetermined(cityName, lang)
@@ -385,6 +385,8 @@ class PrayerTimesViewModel(application: Application) : AndroidViewModel(applicat
 
     fun setSelectedMuezzin(muezzin: Muezzin) {
         repository.setSelectedMuezzin(muezzin)
+        val context = getApplication<Application>()
+        MuezzinDownloadManager.downloadMuezzin(context, muezzin)
     }
 
     fun setAdhanAudioEnabled(enabled: Boolean) {
@@ -450,6 +452,10 @@ class PrayerTimesViewModel(application: Application) : AndroidViewModel(applicat
         viewModelScope.launch {
             com.example.utils.AppUpdateManager.downloadAndInstallUpdate(context, downloadUrl, apkFileName)
         }
+    }
+
+    fun cancelAppUpdateDownload() {
+        com.example.utils.AppUpdateManager.cancelDownload()
     }
 
     fun resetAppUpdateStatus() {

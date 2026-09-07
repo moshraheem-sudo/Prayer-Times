@@ -40,4 +40,26 @@ class ExampleUnitTest {
     assertTrue(PredefinedCities.list.isNotEmpty())
     assertNotNull(PredefinedCities.defaultCity)
   }
+
+  @Test
+  fun testVersionComparison() {
+    val isNewer = com.example.utils.AppUpdateManager::isNewerVersion
+    // Same version -> not newer
+    org.junit.Assert.assertFalse(isNewer("1.0.0", "1.0.0"))
+    org.junit.Assert.assertFalse(isNewer("v1.0.0", "1.0.0"))
+    org.junit.Assert.assertFalse(isNewer("1.0", "1.0.0"))
+    org.junit.Assert.assertFalse(isNewer("1.0.0", "1.0"))
+
+    // Older remote -> not newer
+    org.junit.Assert.assertFalse(isNewer("0.9.9", "1.0.0"))
+    org.junit.Assert.assertFalse(isNewer("1.0.0", "1.0.1"))
+    org.junit.Assert.assertFalse(isNewer("1.0.0", "1.1.0"))
+
+    // Newer remote -> true
+    assertTrue(isNewer("1.0.1", "1.0.0"))
+    assertTrue(isNewer("v1.0.1", "1.0.0"))
+    assertTrue(isNewer("1.1.0", "1.0.0"))
+    assertTrue(isNewer("2.0.0", "1.0.0"))
+    assertTrue(isNewer("1.0.0.1", "1.0.0"))
+  }
 }

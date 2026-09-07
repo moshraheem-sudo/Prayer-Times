@@ -60,6 +60,7 @@ fun AppUpdateDialog(
     currentLanguage: AppLanguage,
     onDismiss: () -> Unit,
     onDownloadNow: (downloadUrl: String, apkFileName: String) -> Unit,
+    onCancelDownload: () -> Unit,
     onRetryCheck: () -> Unit
 ) {
     val context = LocalContext.current
@@ -138,41 +139,45 @@ fun AppUpdateDialog(
                     }
                 },
                 confirmButton = {
-                    Button(
-                        onClick = {
-                            onDownloadNow(updateStatus.downloadUrl, updateStatus.apkFileName)
-                        },
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = IslamicGold,
-                            contentColor = Color.Black
-                        ),
-                        shape = RoundedCornerShape(10.dp),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .testTag("download_now_button")
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.Download,
-                            contentDescription = null,
-                            modifier = Modifier.size(18.dp)
-                        )
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(
-                            text = if (currentLanguage == AppLanguage.ARABIC) "تنزيل الآن" else "Download Now",
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 14.sp
-                        )
-                    }
-                },
-                dismissButton = {
-                    TextButton(
-                        onClick = onDismiss,
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Text(
-                            text = if (currentLanguage == AppLanguage.ARABIC) "لاحقاً" else "Later",
-                            color = AppColors.current.textSubtle
-                        )
+                        Button(
+                            onClick = {
+                                onDownloadNow(updateStatus.downloadUrl, updateStatus.apkFileName)
+                            },
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = IslamicGold,
+                                contentColor = Color.Black
+                            ),
+                            shape = RoundedCornerShape(10.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("download_now_button")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Download,
+                                contentDescription = null,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = if (currentLanguage == AppLanguage.ARABIC) "تنزيل الآن" else "Download Now",
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 14.sp
+                            )
+                        }
+
+                        TextButton(
+                            onClick = onDismiss,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(
+                                text = if (currentLanguage == AppLanguage.ARABIC) "لاحقاً" else "Later",
+                                color = AppColors.current.textSubtle
+                            )
+                        }
                     }
                 }
             )
@@ -184,8 +189,11 @@ fun AppUpdateDialog(
             val totalMb = updateStatus.totalBytes / (1024f * 1024f)
 
             AlertDialog(
-                onDismissRequest = { /* Don't dismiss while downloading */ },
-                properties = DialogProperties(dismissOnBackPress = false, dismissOnClickOutside = false),
+                onDismissRequest = {
+                    onCancelDownload()
+                    onDismiss()
+                },
+                properties = DialogProperties(dismissOnBackPress = true, dismissOnClickOutside = false),
                 icon = {
                     Box(
                         modifier = Modifier
@@ -243,16 +251,47 @@ fun AppUpdateDialog(
 
                         Text(
                             text = if (currentLanguage == AppLanguage.ARABIC)
-                                "يرجى عدم إغلاق التطبيق حتى يكتمل التنزيل بنجاح"
+                                "يرجى الانتظار حتى يكتمل التنزيل بنجاح أو يمكنك إلغاء التنزيل أدناه."
                             else
-                                "Please keep the app open until download completes",
+                                "Please wait for download to complete or tap Cancel below.",
                             style = MaterialTheme.typography.labelSmall,
                             color = AppColors.current.textSubtle,
                             textAlign = TextAlign.Center
                         )
                     }
                 },
-                confirmButton = {}
+                confirmButton = {
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        OutlinedButton(
+                            onClick = {
+                                onCancelDownload()
+                                onDismiss()
+                            },
+                            shape = RoundedCornerShape(10.dp),
+                            colors = ButtonDefaults.outlinedButtonColors(
+                                contentColor = Color(0xFFE53935)
+                            ),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("cancel_download_button")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Close,
+                                contentDescription = null,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = if (currentLanguage == AppLanguage.ARABIC) "إلغاء التنزيل" else "Cancel Download",
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 13.sp
+                            )
+                        }
+                    }
+                }
             )
         }
 
@@ -303,35 +342,39 @@ fun AppUpdateDialog(
                     }
                 },
                 confirmButton = {
-                    Button(
-                        onClick = {
-                            AppUpdateManager.installApk(context, apk)
-                        },
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = IslamicGold,
-                            contentColor = Color.Black
-                        ),
-                        shape = RoundedCornerShape(10.dp),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .testTag("install_update_now_button")
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        Text(
-                            text = if (currentLanguage == AppLanguage.ARABIC) "تثبيت التحديث الآن" else "Install Update Now",
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 14.sp
-                        )
-                    }
-                },
-                dismissButton = {
-                    TextButton(
-                        onClick = onDismiss,
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Text(
-                            text = if (currentLanguage == AppLanguage.ARABIC) "إغلاق" else "Close",
-                            color = AppColors.current.textSubtle
-                        )
+                        Button(
+                            onClick = {
+                                AppUpdateManager.installApk(context, apk)
+                            },
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = IslamicGold,
+                                contentColor = Color.Black
+                            ),
+                            shape = RoundedCornerShape(10.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("install_update_now_button")
+                        ) {
+                            Text(
+                                text = if (currentLanguage == AppLanguage.ARABIC) "تثبيت التحديث الآن" else "Install Update Now",
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 14.sp
+                            )
+                        }
+
+                        TextButton(
+                            onClick = onDismiss,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(
+                                text = if (currentLanguage == AppLanguage.ARABIC) "إغلاق" else "Close",
+                                color = AppColors.current.textSubtle
+                            )
+                        }
                     }
                 }
             )
@@ -401,7 +444,7 @@ fun AppUpdateDialog(
                 confirmButton = {
                     Column(
                         modifier = Modifier.fillMaxWidth(),
-                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         Button(
                             onClick = {
@@ -444,17 +487,16 @@ fun AppUpdateDialog(
                                 fontSize = 13.sp
                             )
                         }
-                    }
-                },
-                dismissButton = {
-                    TextButton(
-                        onClick = onDismiss,
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Text(
-                            text = if (currentLanguage == AppLanguage.ARABIC) "إلغاء" else "Cancel",
-                            color = AppColors.current.textSubtle
-                        )
+
+                        TextButton(
+                            onClick = onDismiss,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(
+                                text = if (currentLanguage == AppLanguage.ARABIC) "إلغاء" else "Cancel",
+                                color = AppColors.current.textSubtle
+                            )
+                        }
                     }
                 }
             )
@@ -491,26 +533,29 @@ fun AppUpdateDialog(
                     )
                 },
                 confirmButton = {
-                    Button(
-                        onClick = onRetryCheck,
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = IslamicGold,
-                            contentColor = Color.Black
-                        ),
-                        shape = RoundedCornerShape(8.dp)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End)
                     ) {
-                        Text(
-                            text = if (currentLanguage == AppLanguage.ARABIC) "إعادة المحاولة" else "Retry",
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
-                },
-                dismissButton = {
-                    TextButton(onClick = onDismiss) {
-                        Text(
-                            text = if (currentLanguage == AppLanguage.ARABIC) "إغلاق" else "Close",
-                            color = AppColors.current.textSubtle
-                        )
+                        TextButton(onClick = onDismiss) {
+                            Text(
+                                text = if (currentLanguage == AppLanguage.ARABIC) "إغلاق" else "Close",
+                                color = AppColors.current.textSubtle
+                            )
+                        }
+                        Button(
+                            onClick = onRetryCheck,
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = IslamicGold,
+                                contentColor = Color.Black
+                            ),
+                            shape = RoundedCornerShape(8.dp)
+                        ) {
+                            Text(
+                                text = if (currentLanguage == AppLanguage.ARABIC) "إعادة المحاولة" else "Retry",
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
                     }
                 }
             )

@@ -105,7 +105,11 @@ object MuezzinDownloadManager {
     fun downloadAllInBackground(context: Context) {
         val appContext = context.applicationContext
         scope.launch {
-            Muezzin.values().forEach { muezzin ->
+            val prefs = appContext.getSharedPreferences("prayer_times_prefs", Context.MODE_PRIVATE)
+            val selectedId = prefs.getString("selected_muezzin_id", Muezzin.defaultMuezzin.id)
+            val sortedMuezzins = Muezzin.values().sortedByDescending { it.id == selectedId }
+
+            sortedMuezzins.forEach { muezzin ->
                 if (!isAudioDownloaded(appContext, muezzin)) {
                     downloadMuezzinInternal(appContext, muezzin, maxRetries = 2)
                     delay(500) // Brief pause between sequential downloads to keep connection clean
