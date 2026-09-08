@@ -605,6 +605,7 @@ class AdhanAudioService : Service(), MediaPlayer.OnPreparedListener,
                     .bigText(text)
             )
             .setContentIntent(openPendingIntent)
+            .setDeleteIntent(stopPendingIntent)
             .addAction(
                 android.R.drawable.ic_media_pause,
                 "⏹ إيقاف الأذان",
