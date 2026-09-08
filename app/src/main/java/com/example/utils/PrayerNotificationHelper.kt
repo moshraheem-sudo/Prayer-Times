@@ -22,8 +22,8 @@ import com.example.data.model.PrayerType
 object PrayerNotificationHelper {
 
     const val CHANNEL_ID = "prayer_times_alerts_channel_v4"
-    const val CHANNEL_NAME = "إشعارات مواقيت الصلاة"
-    const val CHANNEL_DESC = "إشعارات مواقيت الصلاة والمناسبات الدينية"
+    const val CHANNEL_NAME = "إشعارات تطبيق صلاتي"
+    const val CHANNEL_DESC = "إشعارات تطبيق صلاتي ومواقيت الصلاة والمناسبات الدينية"
 
     const val PRE_ADHAN_CHANNEL_ID = "prayer_pre_reminders_channel_v1"
     const val PRE_ADHAN_CHANNEL_NAME = "تنبيهات الاستعداد للصلاة (قبل الأذان)"

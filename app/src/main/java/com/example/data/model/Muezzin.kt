@@ -50,7 +50,7 @@ enum class Muezzin(
     );
 
     companion object {
-        val defaultMuezzin = OSAMA_AL_KARBALAI
+        val defaultMuezzin = AMER_AL_KADHIMI
 
         fun fromId(id: String?): Muezzin {
             return values().firstOrNull { it.id == id } ?: defaultMuezzin

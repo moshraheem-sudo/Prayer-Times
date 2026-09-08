@@ -155,7 +155,7 @@ fun PrayerApp(
                 )
             )
         } else {
-            viewModel.locateViaGps(context, forceRefresh = false) // Battery optimization: don't force on launch
+            // Do not automatically locate on launch to respect user's manual selection and avoid inaccurate IP fallbacks
         }
         viewModel.checkForAppUpdates()
     }

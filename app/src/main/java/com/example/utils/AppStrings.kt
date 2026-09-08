@@ -5,6 +5,11 @@ import com.example.data.model.PredefinedCities
 import com.example.data.model.PrayerType
 
 object AppStrings {
+    fun appName(lang: AppLanguage): String = when (lang) {
+        AppLanguage.ARABIC -> "صلاتي"
+        AppLanguage.ENGLISH -> "Salati"
+    }
+
     fun appTitle(lang: AppLanguage): String = when (lang) {
         AppLanguage.ARABIC -> "مواقيت الصلاة"
         AppLanguage.ENGLISH -> "Prayer Times"
@@ -151,7 +156,7 @@ object AppStrings {
     }
 
     fun settingsThemeTitle(lang: AppLanguage): String = when (lang) {
-        AppLanguage.ARABIC -> "مظهر التطبيق (الثيم)"
+        AppLanguage.ARABIC -> "مظهر التطبيق"
         AppLanguage.ENGLISH -> "App Theme"
     }
 
@@ -258,13 +263,13 @@ object AppStrings {
     }
 
     fun appDescription(lang: AppLanguage): String = when (lang) {
-        AppLanguage.ARABIC -> "تطبيق إسلامي شامل وموثوق لعرض مواقيت الصلاة والظواهر الفلكية والاتجاهات الشرعية بدقة عالية وفق التقويم الشرعي المعتمد."
+        AppLanguage.ARABIC -> "تطبيق صلاتي الإسلامي الشامل والموثوق لعرض مواقيت الصلاة والظواهر الفلكية والاتجاهات الشرعية بدقة عالية وفق التقويم الشرعي المعتمد."
         AppLanguage.ENGLISH -> "Comprehensive Islamic app providing precise Shia prayer times, astronomical phenomena, and Qibla directions."
     }
 
     fun copyrightText(lang: AppLanguage): String = when (lang) {
-        AppLanguage.ARABIC -> "جميع الحقوق محفوظة © 2026 - تطبيق مواقيت الصلاة"
-        AppLanguage.ENGLISH -> "All Rights Reserved © 2026 - Prayer Times App"
+        AppLanguage.ARABIC -> "جميع الحقوق محفوظة © 2026 - تطبيق صلاتي"
+        AppLanguage.ENGLISH -> "All Rights Reserved © 2026 - Salati App"
     }
 
     // Prayer Visibility Settings

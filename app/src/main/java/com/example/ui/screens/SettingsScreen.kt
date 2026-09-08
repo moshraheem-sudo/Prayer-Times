@@ -2192,7 +2192,7 @@ fun SettingsScreen(
                 ) {
                     Image(
                         painter = painterResource(id = R.drawable.ic_app_icon),
-                        contentDescription = AppStrings.appTitle(currentLanguage),
+                        contentDescription = AppStrings.appName(currentLanguage),
                         modifier = Modifier
                             .size(64.dp)
                             .clip(RoundedCornerShape(16.dp))
@@ -2201,7 +2201,7 @@ fun SettingsScreen(
                     )
 
                     Text(
-                        text = AppStrings.appTitle(currentLanguage),
+                        text = AppStrings.appName(currentLanguage),
                         style = MaterialTheme.typography.titleLarge,
                         fontWeight = FontWeight.ExtraBold,
                         color = AppColors.current.textTitle
