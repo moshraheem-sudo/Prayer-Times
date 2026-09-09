@@ -400,7 +400,7 @@ object PrayerNotificationHelper {
 
         val nextInfo = PrayerCalculator.getNextPrayerInfo(prayerData)
         val nextPrayerText = if (nextInfo != null) {
-            "⏳ الصلاة القادمة: ${nextInfo.prayerType.arName} (${nextInfo.remainingFormatted})"
+            "⏳ الصلاة القادمة: صلاة ${nextInfo.prayerType.arName}"
         } else {
             "⏳ صلاتي • مواقيت الصلاة"
         }
@@ -457,17 +457,14 @@ object PrayerNotificationHelper {
         }
 
         val notification = NotificationCompat.Builder(context, ONGOING_CHANNEL_ID)
-            .setSmallIcon(R.drawable.ic_stat_prayer)
-            .apply {
-                if (appIconBitmap != null) {
-                    setLargeIcon(appIconBitmap)
-                }
-            }
+            .setSmallIcon(R.drawable.ic_app_icon)
             .setCustomContentView(remoteCollapsed)
             .setCustomBigContentView(remoteExpanded)
             .setStyle(NotificationCompat.DecoratedCustomViewStyle())
             .setContentIntent(pendingIntent)
             .setOngoing(true)
+            .setAutoCancel(false)
+            .setCategory(NotificationCompat.CATEGORY_STATUS)
             .setOnlyAlertOnce(true)
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
