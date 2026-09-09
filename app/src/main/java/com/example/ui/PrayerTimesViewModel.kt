@@ -82,6 +82,24 @@ class PrayerTimesViewModel(application: Application) : AndroidViewModel(applicat
         repository.setShowIshaSeparate(show)
     }
 
+    val isOngoingNotificationEnabled: StateFlow<Boolean> = repository.isOngoingNotificationEnabled
+
+    fun setOngoingNotificationEnabled(enabled: Boolean) {
+        repository.setOngoingNotificationEnabled(enabled)
+        val context = getApplication<Application>()
+        if (enabled) {
+            prayerTimesData.value?.let { data ->
+                PrayerNotificationHelper.updateOngoingPrayerNotification(
+                    context,
+                    data,
+                    selectedCity.value.nameAr
+                )
+            }
+        } else {
+            PrayerNotificationHelper.cancelOngoingPrayerNotification(context)
+        }
+    }
+
     private val _currentTab = MutableStateFlow(AppTab.PRAYER_TIMES)
     val currentTab: StateFlow<AppTab> = _currentTab.asStateFlow()
 

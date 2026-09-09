@@ -14,10 +14,13 @@ import android.net.Uri
 import android.os.Build
 import android.text.SpannableString
 import android.text.style.StyleSpan
+import android.widget.RemoteViews
 import androidx.core.app.NotificationCompat
 import com.example.MainActivity
 import com.example.R
+import com.example.data.model.PrayerTimesData
 import com.example.data.model.PrayerType
+import com.example.data.repository.PrayerTimesRepository
 
 object PrayerNotificationHelper {
 
@@ -29,9 +32,15 @@ object PrayerNotificationHelper {
     const val PRE_ADHAN_CHANNEL_NAME = "تنبيهات الاستعداد للصلاة (قبل الأذان)"
     const val PRE_ADHAN_CHANNEL_DESC = "تنبيهات عادية تسبق موعد الأذان بـ 10 دقائق ثم 5 دقائق للاستعداد والوضوء"
 
+    const val ONGOING_CHANNEL_ID = "prayer_ongoing_times_bar_v1"
+    const val ONGOING_CHANNEL_NAME = "شريط مواقيت الصلاة الدائم"
+    const val ONGOING_CHANNEL_DESC = "بطاقة دائمة في لوحة الإشعارات تعرض مواقيت الصلاة لليوم والمدينة المحددة بدقة"
+
     const val SILENT_CHANNEL_ID = "prayer_silent_updates_channel"
     const val SILENT_CHANNEL_NAME = "تحديثات الخلفية"
     const val SILENT_CHANNEL_DESC = "إشعارات التحديثات الصامتة للتقويم والموقع"
+
+    const val ONGOING_NOTIFICATION_ID = 10001
 
     fun createNotificationChannel(context: Context) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -83,7 +92,22 @@ object PrayerNotificationHelper {
             }
             notificationManager.createNotificationChannel(preAdhanChannel)
 
-            // 3. Low priority silent channel for background updates (Hijri Sync)
+            // 3. Ongoing Persistent Channel for Prayer Times Notification Card
+            val ongoingChannel = NotificationChannel(
+                ONGOING_CHANNEL_ID,
+                ONGOING_CHANNEL_NAME,
+                NotificationManager.IMPORTANCE_LOW
+            ).apply {
+                description = ONGOING_CHANNEL_DESC
+                enableLights(false)
+                enableVibration(false)
+                setSound(null, null)
+                setShowBadge(false)
+                lockscreenVisibility = NotificationCompat.VISIBILITY_PUBLIC
+            }
+            notificationManager.createNotificationChannel(ongoingChannel)
+
+            // 4. Low priority silent channel for background updates (Hijri Sync)
             val silentChannel = NotificationChannel(
                 SILENT_CHANNEL_ID,
                 SILENT_CHANNEL_NAME,
@@ -344,5 +368,120 @@ object PrayerNotificationHelper {
         val notificationManager =
             context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         notificationManager.notify(889, notification)
+    }
+
+    /**
+     * Updates or shows the persistent prayer times notification card in the Android notification drawer.
+     * Matches the compact, elegant multi-column layout requested (Noor Al-Itrah style) with our app branding "صلاتي".
+     * Texts are tuned to small sizes to guarantee zero overflow or line collision on all device screens.
+     */
+    fun updateOngoingPrayerNotification(
+        context: Context,
+        prayerData: PrayerTimesData,
+        cityName: String
+    ) {
+        val repo = PrayerTimesRepository(context)
+        if (!repo.isOngoingNotificationEnabled.value) {
+            cancelOngoingPrayerNotification(context)
+            return
+        }
+
+        createNotificationChannel(context)
+
+        val cityDisplay = cityName.ifBlank { prayerData.city.nameAr }.ifBlank { "النجف الأشرف" }
+
+        val fajr12 = PrayerCalculator.formatTo12hArabic(prayerData.fajir)
+        val sunrise12 = PrayerCalculator.formatTo12hArabic(prayerData.sunrise)
+        val dhuhr12 = PrayerCalculator.formatTo12hArabic(prayerData.doher)
+        val asr12 = PrayerCalculator.formatTo12hArabic(prayerData.asr)
+        val maghrib12 = PrayerCalculator.formatTo12hArabic(prayerData.maghrib)
+        val isha12 = PrayerCalculator.formatTo12hArabic(prayerData.isha)
+        val midnight12 = PrayerCalculator.formatTo12hArabic(prayerData.midnight)
+
+        val nextInfo = PrayerCalculator.getNextPrayerInfo(prayerData)
+        val nextPrayerText = if (nextInfo != null) {
+            "⏳ الصلاة القادمة: ${nextInfo.prayerType.arName} (${nextInfo.remainingFormatted})"
+        } else {
+            "⏳ صلاتي • مواقيت الصلاة"
+        }
+
+        // 1. Collapsed View (4 Core Columns: الفجر، الشروق، الظهر، المغرب)
+        val remoteCollapsed = RemoteViews(context.packageName, R.layout.notification_prayer_card).apply {
+            setTextViewText(R.id.tv_fajr_title, "الفجر")
+            setTextViewText(R.id.tv_fajr_time, fajr12)
+
+            setTextViewText(R.id.tv_sunrise_title, "الشروق")
+            setTextViewText(R.id.tv_sunrise_time, sunrise12)
+
+            setTextViewText(R.id.tv_dhuhr_title, "الظهر")
+            setTextViewText(R.id.tv_dhuhr_time, dhuhr12)
+
+            setTextViewText(R.id.tv_maghrib_title, "المغرب")
+            setTextViewText(R.id.tv_maghrib_time, maghrib12)
+        }
+
+        // 2. Expanded View (4 Core Times: الفجر، الشروق، الظهر، المغرب + City & Hijri Date + Next Prayer Countdown)
+        val remoteExpanded = RemoteViews(context.packageName, R.layout.notification_prayer_card_expanded).apply {
+            setTextViewText(R.id.tv_expanded_city, "📍 $cityDisplay")
+            setTextViewText(R.id.tv_expanded_hijri, prayerData.hijriDate.ifBlank { "التقويم الهجري" })
+
+            setTextViewText(R.id.tv_exp_fajr_title, "الفجر")
+            setTextViewText(R.id.tv_exp_fajr_time, fajr12)
+
+            setTextViewText(R.id.tv_exp_sunrise_title, "الشروق")
+            setTextViewText(R.id.tv_exp_sunrise_time, sunrise12)
+
+            setTextViewText(R.id.tv_exp_dhuhr_title, "الظهر")
+            setTextViewText(R.id.tv_exp_dhuhr_time, dhuhr12)
+
+            setTextViewText(R.id.tv_exp_maghrib_title, "المغرب")
+            setTextViewText(R.id.tv_exp_maghrib_time, maghrib12)
+
+            setTextViewText(R.id.tv_expanded_next_prayer, nextPrayerText)
+        }
+
+        val intent = Intent(context, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+        }
+        val pendingIntent = PendingIntent.getActivity(
+            context,
+            9999,
+            intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        val appIconBitmap = try {
+            BitmapFactory.decodeResource(context.resources, R.drawable.ic_app_icon)
+        } catch (e: Exception) {
+            null
+        }
+
+        val notification = NotificationCompat.Builder(context, ONGOING_CHANNEL_ID)
+            .setSmallIcon(R.drawable.ic_stat_prayer)
+            .apply {
+                if (appIconBitmap != null) {
+                    setLargeIcon(appIconBitmap)
+                }
+            }
+            .setCustomContentView(remoteCollapsed)
+            .setCustomBigContentView(remoteExpanded)
+            .setStyle(NotificationCompat.DecoratedCustomViewStyle())
+            .setContentIntent(pendingIntent)
+            .setOngoing(true)
+            .setOnlyAlertOnce(true)
+            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+            .setColor(0xFF14B8A6.toInt())
+            .build()
+
+        val notificationManager =
+            context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        notificationManager.notify(ONGOING_NOTIFICATION_ID, notification)
+    }
+
+    fun cancelOngoingPrayerNotification(context: Context) {
+        val notificationManager =
+            context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        notificationManager.cancel(ONGOING_NOTIFICATION_ID)
     }
 }

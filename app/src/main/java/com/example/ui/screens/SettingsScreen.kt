@@ -178,6 +178,8 @@ fun SettingsScreen(
     onSelectMuezzin: (Muezzin) -> Unit = {},
     isAdhanAudioEnabled: Boolean = true,
     onToggleAdhanAudio: (Boolean) -> Unit = {},
+    isOngoingNotificationEnabled: Boolean = true,
+    onToggleOngoingNotification: (Boolean) -> Unit = {},
     adhanPlaybackState: AdhanPlaybackState = AdhanPlaybackState(),
     onPreviewMuezzin: (Muezzin) -> Unit = {},
     onStopAdhanPlayback: () -> Unit = {},
@@ -883,6 +885,66 @@ fun SettingsScreen(
                     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         HorizontalDivider(
                             color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
+                            thickness = 1.dp
+                        )
+
+                        // Ongoing Persistent Prayer Times Notification Card Toggle
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(14.dp))
+                                .background(if (isOngoingNotificationEnabled) AppColors.current.tealGlow20.copy(alpha = 0.35f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.2f))
+                                .border(
+                                    1.dp,
+                                    if (isOngoingNotificationEnabled) AppColors.current.tealAccentLight.copy(alpha = 0.4f) else Color.Transparent,
+                                    RoundedCornerShape(14.dp)
+                                )
+                                .padding(horizontal = 14.dp, vertical = 12.dp)
+                                .testTag("toggle_ongoing_notification_card"),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Text(
+                                    text = "🎴",
+                                    fontSize = 20.sp
+                                )
+                                Spacer(modifier = Modifier.width(10.dp))
+                                Column {
+                                    Text(
+                                        text = if (currentLanguage == AppLanguage.ARABIC) "بطاقة مواقيت الصلاة في الإشعارات" else "Prayer Times Notification Bar",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        fontWeight = FontWeight.Bold,
+                                        color = AppColors.current.textTitle
+                                    )
+                                    Text(
+                                        text = if (currentLanguage == AppLanguage.ARABIC)
+                                            "عرض شريط دائم لمواقيت الصلاة في لوحة الإشعارات بنمط أنيق ومضغوط"
+                                        else
+                                            "Display compact persistent prayer schedule card in notifications tray",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = AppColors.current.textSubtle,
+                                        fontSize = 11.sp
+                                    )
+                                }
+                            }
+                            Switch(
+                                checked = isOngoingNotificationEnabled,
+                                onCheckedChange = { onToggleOngoingNotification(it) },
+                                colors = SwitchDefaults.colors(
+                                    checkedThumbColor = AppColors.current.tealAccentLight,
+                                    checkedTrackColor = AppColors.current.tealAccentLight.copy(alpha = 0.35f),
+                                    uncheckedThumbColor = MaterialTheme.colorScheme.outline,
+                                    uncheckedTrackColor = MaterialTheme.colorScheme.surfaceVariant
+                                )
+                            )
+                        }
+
+                        HorizontalDivider(
+                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f),
                             thickness = 1.dp
                         )
 

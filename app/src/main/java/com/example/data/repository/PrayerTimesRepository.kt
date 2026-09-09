@@ -66,6 +66,14 @@ class PrayerTimesRepository(private val context: Context) {
     private val _isAdhanAudioEnabled = MutableStateFlow(prefs.getBoolean("adhan_audio_enabled", true))
     val isAdhanAudioEnabled: StateFlow<Boolean> = _isAdhanAudioEnabled.asStateFlow()
 
+    private val _isOngoingNotificationEnabled = MutableStateFlow(prefs.getBoolean("ongoing_prayer_notif_enabled", true))
+    val isOngoingNotificationEnabled: StateFlow<Boolean> = _isOngoingNotificationEnabled.asStateFlow()
+
+    fun setOngoingNotificationEnabled(enabled: Boolean) {
+        _isOngoingNotificationEnabled.value = enabled
+        prefs.edit().putBoolean("ongoing_prayer_notif_enabled", enabled).apply()
+    }
+
     fun setSelectedMuezzin(muezzin: Muezzin) {
         _selectedMuezzin.value = muezzin
         prefs.edit().putString("selected_muezzin_id", muezzin.id).apply()

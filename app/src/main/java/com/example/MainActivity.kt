@@ -226,6 +226,7 @@ fun PrayerApp(
                     val manualHijriDateOverride by viewModel.manualHijriDateOverride.collectAsStateWithLifecycle()
                     val selectedMuezzin by viewModel.selectedMuezzin.collectAsStateWithLifecycle()
                     val isAdhanAudioEnabled by viewModel.isAdhanAudioEnabled.collectAsStateWithLifecycle()
+                    val isOngoingNotificationEnabled by viewModel.isOngoingNotificationEnabled.collectAsStateWithLifecycle()
                     val adhanPlaybackState by viewModel.adhanPlaybackState.collectAsStateWithLifecycle()
                     val muezzinDownloadStatuses by viewModel.muezzinDownloadStatuses.collectAsStateWithLifecycle()
                     val prayerAlarmConfigs by viewModel.prayerAlarmConfigs.collectAsStateWithLifecycle()
@@ -283,6 +284,8 @@ fun PrayerApp(
                         onSelectMuezzin = { viewModel.setSelectedMuezzin(it) },
                         isAdhanAudioEnabled = isAdhanAudioEnabled,
                         onToggleAdhanAudio = { viewModel.setAdhanAudioEnabled(it) },
+                        isOngoingNotificationEnabled = isOngoingNotificationEnabled,
+                        onToggleOngoingNotification = { viewModel.setOngoingNotificationEnabled(it) },
                         adhanPlaybackState = adhanPlaybackState,
                         onPreviewMuezzin = { viewModel.previewMuezzin(it) },
                         onStopAdhanPlayback = { viewModel.stopAdhanPlayback() },

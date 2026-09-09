@@ -22,6 +22,13 @@ object PrayerNotificationScheduler {
         prayerData: PrayerTimesData,
         cityName: String
     ) {
+        // Also update/sync the ongoing prayer notification card with the latest times
+        try {
+            PrayerNotificationHelper.updateOngoingPrayerNotification(context, prayerData, cityName)
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to update ongoing notification: ${e.message}")
+        }
+
         val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as? AlarmManager ?: return
         val repo = PrayerTimesRepository(context)
 
