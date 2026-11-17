@@ -950,13 +950,10 @@ fun SettingsScreen(
 
                         val prayerNotifications = listOf(
                             Triple(PrayerType.FAJR, "🌅", AppStrings.prayerDescription(PrayerType.FAJR, currentLanguage)),
-                            Triple(PrayerType.SUNRISE, "☀️", AppStrings.prayerDescription(PrayerType.SUNRISE, currentLanguage)),
                             Triple(PrayerType.DHUHR, "☀️", AppStrings.prayerDescription(PrayerType.DHUHR, currentLanguage)),
                             Triple(PrayerType.ASR, "🌤️", AppStrings.prayerDescription(PrayerType.ASR, currentLanguage)),
-                            Triple(PrayerType.SUNSET, "🌇", AppStrings.prayerDescription(PrayerType.SUNSET, currentLanguage)),
                             Triple(PrayerType.MAGHRIB, "🌙", AppStrings.prayerDescription(PrayerType.MAGHRIB, currentLanguage)),
-                            Triple(PrayerType.ISHA, "✨", AppStrings.prayerDescription(PrayerType.ISHA, currentLanguage)),
-                            Triple(PrayerType.MIDNIGHT, "🌌", AppStrings.prayerDescription(PrayerType.MIDNIGHT, currentLanguage))
+                            Triple(PrayerType.ISHA, "✨", AppStrings.prayerDescription(PrayerType.ISHA, currentLanguage))
                         )
 
                         prayerNotifications.forEach { (prayer, emoji, desc) ->
@@ -1964,6 +1961,25 @@ fun SettingsScreen(
                                     fontWeight = FontWeight.Bold
                                 )
                             }
+                        }
+
+                        // Last Sync Time Info
+                        if (lastHijriSyncTime > 0L) {
+                            val formattedSyncTime = remember(lastHijriSyncTime, currentLanguage) {
+                                val sdf = java.text.SimpleDateFormat("yyyy-MM-dd  hh:mm a", if (currentLanguage == AppLanguage.ARABIC) java.util.Locale("ar") else java.util.Locale.ENGLISH)
+                                sdf.format(java.util.Date(lastHijriSyncTime))
+                            }
+                            Text(
+                                text = if (currentLanguage == AppLanguage.ARABIC)
+                                    "آخر مزامنة ناجحة: $formattedSyncTime"
+                                else
+                                    "Last successful sync: $formattedSyncTime",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = AppColors.current.textSubtle,
+                                fontSize = 11.sp,
+                                textAlign = TextAlign.Center,
+                                modifier = Modifier.fillMaxWidth()
+                            )
                         }
 
                         // Sync status message

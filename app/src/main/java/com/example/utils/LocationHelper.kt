@@ -158,8 +158,12 @@ object LocationHelper {
             }
         }
 
-        // 3. If still null, return closest match or default city
+        // 3. If still null, return previously saved location from internal system file / cache if available, or default
         if (detectedLat == null || detectedLon == null) {
+            val savedLocation = getSavedDeviceLocation(context)
+            if (savedLocation != null) {
+                return@withContext savedLocation
+            }
             return@withContext PredefinedCities.defaultCity
         }
 
@@ -232,8 +236,58 @@ object LocationHelper {
             .putString("last_gps_city", resultJson.toString())
             .putLong("last_update_time", now)
             .apply()
+
+        // Also permanently save to system internal file for offline access
+        try {
+            val file = java.io.File(context.filesDir, "saved_device_location.json")
+            file.writeText(resultJson.toString(), Charsets.UTF_8)
+        } catch (_: Exception) {}
         
         return@withContext resultCity
+    }
+
+    /**
+     * Reads the last verified saved location from local internal system files or SharedPreferences.
+     * Ensures instant offline access when internet is disconnected.
+     */
+    fun getSavedDeviceLocation(context: Context): CityLocation? {
+        try {
+            val file = java.io.File(context.filesDir, "saved_device_location.json")
+            if (file.exists()) {
+                val json = JSONObject(file.readText(Charsets.UTF_8))
+                return CityLocation(
+                    id = json.getString("id"),
+                    nameAr = json.getString("nameAr"),
+                    nameEn = json.getString("nameEn"),
+                    countryAr = json.getString("countryAr"),
+                    latitude = json.getDouble("latitude"),
+                    longitude = json.getDouble("longitude"),
+                    timezone = json.getString("timezone"),
+                    isHolyCity = json.optBoolean("isHolyCity", false),
+                    province = json.optString("province", "")
+                )
+            }
+        } catch (_: Exception) {}
+
+        val prefs = context.getSharedPreferences("location_cache", Context.MODE_PRIVATE)
+        val cachedGpsJson = prefs.getString("last_gps_city", null)
+        if (cachedGpsJson != null) {
+            try {
+                val json = JSONObject(cachedGpsJson)
+                return CityLocation(
+                    id = json.getString("id"),
+                    nameAr = json.getString("nameAr"),
+                    nameEn = json.getString("nameEn"),
+                    countryAr = json.getString("countryAr"),
+                    latitude = json.getDouble("latitude"),
+                    longitude = json.getDouble("longitude"),
+                    timezone = json.getString("timezone"),
+                    isHolyCity = json.optBoolean("isHolyCity", false),
+                    province = json.optString("province", "")
+                )
+            } catch (_: Exception) {}
+        }
+        return null
     }
 
     private fun isDefaultEmulatorCoordinates(latitude: Double, longitude: Double): Boolean {

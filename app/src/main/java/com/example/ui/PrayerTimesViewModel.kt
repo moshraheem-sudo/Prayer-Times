@@ -25,6 +25,13 @@ import com.example.utils.MuezzinDownloadStatus
 import com.example.utils.PrayerCalculator
 import com.example.utils.PrayerNotificationHelper
 import com.example.utils.PrayerNotificationScheduler
+import android.content.Context
+import android.net.ConnectivityManager
+import android.net.Network
+import android.net.NetworkCapabilities
+import android.net.NetworkRequest
+import com.example.utils.HijriCalendarHelper
+import com.example.utils.HijriSyncScheduler
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -134,16 +141,69 @@ class PrayerTimesViewModel(application: Application) : AndroidViewModel(applicat
     private val _gpsStatusMessage = MutableStateFlow<String?>(null)
     val gpsStatusMessage: StateFlow<String?> = _gpsStatusMessage.asStateFlow()
 
+    private var lastKnownGregorianDayKey: String = HijriCalendarHelper.formatLocalGregorianKey()
+    private var lastAppUpdateCheckMillis: Long = 0L
+    private var networkCallback: ConnectivityManager.NetworkCallback? = null
+
     init {
         loadNotifications()
         loadPrayerVisibility()
         loadInitialData()
         startLiveTicker()
+        registerNetworkSyncCallback()
         MuezzinDownloadManager.initAndAutoDownloadAll(getApplication())
         viewModelScope.launch {
             prayerTimesData.collect {
                 updatePrayerCountdown()
             }
+        }
+    }
+
+    private fun registerNetworkSyncCallback() {
+        try {
+            val cm = getApplication<Application>().getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager ?: return
+            val request = NetworkRequest.Builder()
+                .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+                .build()
+            val callback = object : ConnectivityManager.NetworkCallback() {
+                override fun onAvailable(network: Network) {
+                    if (repository.shouldAutoSyncHijriNow()) {
+                        viewModelScope.launch {
+                            repository.syncHijriDateWithGithub(isAuto = true, notifyUser = false)
+                        }
+                    }
+                }
+            }
+            cm.registerNetworkCallback(request, callback)
+            networkCallback = callback
+        } catch (_: Exception) {
+            // Safe fallback if system service restricts callbacks
+        }
+    }
+
+    override fun onCleared() {
+        super.onCleared()
+        try {
+            val cm = getApplication<Application>().getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
+            networkCallback?.let { cm?.unregisterNetworkCallback(it) }
+        } catch (_: Exception) {}
+    }
+
+    fun onAppForegrounded() {
+        val currentDayKey = HijriCalendarHelper.formatLocalGregorianKey()
+        if (currentDayKey != lastKnownGregorianDayKey) {
+            lastKnownGregorianDayKey = currentDayKey
+            repository.recomputeForNewDay()
+            refreshPrayerTimes()
+        } else if (repository.shouldAutoSyncHijriNow()) {
+            viewModelScope.launch {
+                repository.syncHijriDateWithGithub(isAuto = true, notifyUser = false)
+            }
+        }
+
+        val now = System.currentTimeMillis()
+        if (lastAppUpdateCheckMillis > 0L && now - lastAppUpdateCheckMillis >= 6 * 60 * 60 * 1000L) {
+            checkForAppUpdates()
         }
     }
 
@@ -154,21 +214,30 @@ class PrayerTimesViewModel(application: Application) : AndroidViewModel(applicat
             _gpsStatusMessage.value = com.example.utils.AppStrings.gpsStatusLocating(lang)
             try {
                 val location = com.example.utils.LocationHelper.getDeviceLocation(context, forceRefresh)
+                    ?: com.example.utils.LocationHelper.getSavedDeviceLocation(context)
                     ?: com.example.data.model.PredefinedCities.defaultCity
                 val cityName = if (lang == AppLanguage.ARABIC) location.nameAr else location.nameEn
-                _gpsStatusMessage.value = com.example.utils.AppStrings.gpsStatusDetermined(cityName, lang)
+                _gpsStatusMessage.value = if (lang == AppLanguage.ARABIC) "تم تحديد موقعك وحفظه بنجاح: $cityName" else com.example.utils.AppStrings.gpsStatusDetermined(cityName, lang)
                 changeCity(location)
                 onComplete?.invoke(true)
             } catch (e: Exception) {
-                val defaultCity = com.example.data.model.PredefinedCities.defaultCity
-                val cityName = if (lang == AppLanguage.ARABIC) defaultCity.nameAr else defaultCity.nameEn
-                _gpsStatusMessage.value = com.example.utils.AppStrings.gpsStatusSetTo(cityName, lang)
-                changeCity(defaultCity)
+                val savedCity = com.example.utils.LocationHelper.getSavedDeviceLocation(context)
+                    ?: com.example.data.model.PredefinedCities.defaultCity
+                val cityName = if (lang == AppLanguage.ARABIC) savedCity.nameAr else savedCity.nameEn
+                _gpsStatusMessage.value = if (lang == AppLanguage.ARABIC) "تمت استعادة موقعك المحفوظ في الجهاز: $cityName" else com.example.utils.AppStrings.gpsStatusSetTo(cityName, lang)
+                changeCity(savedCity)
                 onComplete?.invoke(true)
             } finally {
                 _isGpsLocating.value = false
             }
         }
+    }
+
+    fun restoreSavedLocation(context: android.content.Context) {
+        val saved = repository.restoreSavedLocation()
+        val cityName = if (appLanguage.value == AppLanguage.ARABIC) saved.nameAr else saved.nameEn
+        _gpsStatusMessage.value = "تم الرجوع إلى موقعك المحفوظ: $cityName"
+        updatePrayerCountdown()
     }
 
     fun setGpsStatusMessage(msg: String?) {
@@ -197,7 +266,21 @@ class PrayerTimesViewModel(application: Application) : AndroidViewModel(applicat
         viewModelScope.launch {
             val timeFormat = SimpleDateFormat("hh:mm:ss a", Locale("ar"))
             while (isActive) {
-                _currentLiveTime.value = timeFormat.format(Date())
+                val now = Date()
+                _currentLiveTime.value = timeFormat.format(now)
+                val currentDayKey = HijriCalendarHelper.formatLocalGregorianKey(now)
+                if (currentDayKey != lastKnownGregorianDayKey) {
+                    lastKnownGregorianDayKey = currentDayKey
+                    repository.recomputeForNewDay()
+                    launch {
+                        repository.fetchPrayerTimes(selectedCity.value, forceRefresh = true)
+                    }
+                    if (repository.githubAutoSyncEnabled.value || !repository.hasCompletedInitialHijriSync()) {
+                        launch {
+                            repository.syncHijriDateWithGithub(isAuto = true, notifyUser = false)
+                        }
+                    }
+                }
                 updatePrayerCountdown()
                 delay(1000)
             }
@@ -228,17 +311,31 @@ class PrayerTimesViewModel(application: Application) : AndroidViewModel(applicat
 
     fun refreshPrayerTimes() {
         viewModelScope.launch {
+            if (repository.githubAutoSyncEnabled.value || !repository.hasCompletedInitialHijriSync()) {
+                launch {
+                    repository.syncHijriDateWithGithub(isAuto = true, notifyUser = false)
+                }
+            }
             repository.fetchPrayerTimes(selectedCity.value, forceRefresh = true)
             updatePrayerCountdown()
         }
     }
 
-    fun changeCity(city: CityLocation) {
+    fun changeCity(city: CityLocation, context: android.content.Context? = null): Boolean {
+        if (context != null) {
+            val isCached = repository.isCityCached(city)
+            val isOnline = com.example.utils.AdhanAudioService.isOnline(context)
+            if (!isCached && !isOnline) {
+                _gpsStatusMessage.value = "تحديد هذه المدينة لأول مرة يتطلب اتصالاً بالإنترنت لتحميل مواقيتها. يمكنك العودة لموقعك المحفوظ."
+                return false
+            }
+        }
         viewModelScope.launch {
             repository.selectCity(city)
             repository.fetchPrayerTimes(city, forceRefresh = true)
             updatePrayerCountdown()
         }
+        return true
     }
 
     private fun loadNotifications() {
@@ -359,6 +456,12 @@ class PrayerTimesViewModel(application: Application) : AndroidViewModel(applicat
 
     fun setGithubAutoSyncEnabled(enabled: Boolean) {
         repository.setGithubAutoSyncEnabled(enabled)
+        if (enabled) {
+            HijriSyncScheduler.schedulePeriodicSync(getApplication())
+            viewModelScope.launch {
+                repository.syncHijriDateWithGithub(isAuto = true, notifyUser = false)
+            }
+        }
     }
 
     fun saveGithubSettings(owner: String, name: String, token: String, webhookUrl: String) {
@@ -460,6 +563,7 @@ class PrayerTimesViewModel(application: Application) : AndroidViewModel(applicat
 
     fun checkForAppUpdates() {
         val context = getApplication<Application>()
+        lastAppUpdateCheckMillis = System.currentTimeMillis()
         viewModelScope.launch {
             com.example.utils.AppUpdateManager.checkForUpdates(context)
         }

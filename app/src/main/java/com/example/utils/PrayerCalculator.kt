@@ -345,8 +345,12 @@ object PrayerCalculator {
             "شوال" to "Shawwal",
             "ذو القعدة" to "Dhu al-Qi'dah",
             "ذو القعده" to "Dhu al-Qi'dah",
+            "ذي القعدة" to "Dhu al-Qi'dah",
+            "ذي القعده" to "Dhu al-Qi'dah",
             "ذو الحجة" to "Dhu al-Hijjah",
-            "ذو الحجه" to "Dhu al-Hijjah"
+            "ذو الحجه" to "Dhu al-Hijjah",
+            "ذي الحجة" to "Dhu al-Hijjah",
+            "ذي الحجه" to "Dhu al-Hijjah"
         )
 
         var monthFound = false

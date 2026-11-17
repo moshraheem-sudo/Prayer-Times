@@ -34,7 +34,15 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
-class PrayerTimesRepository(private val context: Context) {
+import com.example.utils.HijriCalendarHelper
+import com.example.utils.HijriSnapshot
+import com.example.utils.HijriSyncScheduler
+import com.example.utils.ResolvedHijriDate
+
+class PrayerTimesRepository(
+    private val context: Context,
+    private val autoStartSync: Boolean = true
+) {
 
     private val prefs: SharedPreferences =
         context.getSharedPreferences("kafeel_prayer_prefs", Context.MODE_PRIVATE)
@@ -288,10 +296,11 @@ class PrayerTimesRepository(private val context: Context) {
 
         val customHijri = _manualHijriDateOverride.value?.trim()?.ifBlank { null }
         val dayOffset = _manualHijriOffset.value
+        val syncedHijri = computeSyncedHijriInfo(dayOffset = dayOffset)?.formattedAr
         val finalHijri = when {
             customHijri != null -> customHijri
+            syncedHijri != null -> syncedHijri
             dayOffset != 0 -> PrayerCalculator.getFormattedHijriDateWithOffset(dayOffset = dayOffset)
-            prefs.getString("github_hijri_override", null) != null -> prefs.getString("github_hijri_override", null)!!
             else -> baseData.hijriDate
         }
 
@@ -306,6 +315,65 @@ class PrayerTimesRepository(private val context: Context) {
             midnight = finalMidnight,
             hijriDate = finalHijri
         )
+    }
+
+    fun hasCompletedInitialHijriSync(): Boolean {
+        return prefs.getBoolean("has_initial_hijri_sync", false) &&
+            !prefs.getString("github_hijri_ref_date", null).isNullOrBlank()
+    }
+
+    fun getSavedHijriSnapshot(): HijriSnapshot? {
+        val refDate = prefs.getString("github_hijri_ref_date", null)?.takeIf { it.isNotBlank() } ?: return null
+        val day = prefs.getInt("github_hijri_day", 0)
+        val month = prefs.getInt("github_hijri_month", 0)
+        val year = prefs.getInt("github_hijri_year", 0)
+        if (day <= 0 || month !in 1..12 || year <= 0) return null
+        val monthName = prefs.getString("github_hijri_month_name", "") ?: ""
+        return HijriSnapshot(
+            day = day,
+            month = month,
+            year = year,
+            monthNameAr = monthName,
+            refGregorianDate = refDate
+        )
+    }
+
+    fun computeSyncedHijriInfo(dayOffset: Int = 0, date: Date = Date()): ResolvedHijriDate? {
+        val snapshot = getSavedHijriSnapshot() ?: return null
+        return HijriCalendarHelper.resolveHijriDate(
+            snapshot = snapshot,
+            targetDate = date,
+            manualDayOffset = dayOffset
+        )
+    }
+
+    fun getCurrentHijriDayNumber(date: Date = Date()): Int {
+        return computeSyncedHijriInfo(dayOffset = 0, date = date)?.day
+            ?: HijriCalendarHelper.getDeviceHijriDay(date)
+    }
+
+    fun isCriticalHijriTransitionDay(date: Date = Date()): Boolean {
+        return HijriCalendarHelper.isCriticalTransitionDay(getCurrentHijriDayNumber(date))
+    }
+
+    fun shouldAutoSyncHijriNow(): Boolean {
+        if (!hasCompletedInitialHijriSync()) return true
+        if (!_githubAutoSyncEnabled.value) return false
+
+        val now = System.currentTimeMillis()
+        val lastSync = _lastHijriSyncTime.value
+        val todayKey = HijriCalendarHelper.formatLocalGregorianKey()
+        val lastSyncDay = prefs.getString("last_hijri_sync_gregorian_day", null)
+
+        if (lastSyncDay != todayKey) return true
+        if (isCriticalHijriTransitionDay()) {
+            return (now - lastSync) >= 5 * 60 * 1000L
+        }
+        return (now - lastSync) >= 60 * 60 * 1000L
+    }
+
+    fun recomputeForNewDay() {
+        recomputeAndRefreshCurrentTimes()
     }
 
     private fun recomputeAndRefreshCurrentTimes() {
@@ -347,33 +415,51 @@ class PrayerTimesRepository(private val context: Context) {
     val errorMessage: StateFlow<String?> = _errorMessage.asStateFlow()
 
     init {
-        // Automatically sync latest prayer times in background and preload cities cache
-        CoroutineScope(Dispatchers.IO).launch {
-            fetchPrayerTimes(loadSavedCity(), forceRefresh = false)
-            preloadAllCitiesInBackground()
-            if (_githubAutoSyncEnabled.value) {
-                try {
-                    syncHijriDateWithGithub(isAuto = true, notifyUser = false)
-                } catch (e: Exception) {
-                    Log.d("PrayerRepo", "Auto GitHub sync: ${e.message}")
+        if (autoStartSync) {
+            HijriSyncScheduler.schedulePeriodicSync(context)
+
+            // Sync Hijri immediately in parallel on startup (especially on first install & critical days 28,29,30,1)
+            if (_githubAutoSyncEnabled.value || !hasCompletedInitialHijriSync()) {
+                CoroutineScope(Dispatchers.IO).launch {
+                    try {
+                        val firstAttempt = syncHijriDateWithGithub(isAuto = true, notifyUser = false)
+                        if (firstAttempt.isFailure) {
+                            kotlinx.coroutines.delay(4000)
+                            val retryAttempt = syncHijriDateWithGithub(isAuto = true, notifyUser = false)
+                            if (retryAttempt.isFailure) {
+                                HijriSyncScheduler.scheduleImmediateSync(context)
+                            }
+                        }
+                    } catch (e: Exception) {
+                        Log.d("PrayerRepo", "Auto GitHub sync: ${e.message}")
+                        HijriSyncScheduler.scheduleImmediateSync(context)
+                    }
                 }
+            }
+
+            // Automatically sync latest prayer times in background and preload cities cache
+            CoroutineScope(Dispatchers.IO).launch {
+                fetchPrayerTimes(loadSavedCity(), forceRefresh = false)
+                preloadAllCitiesInBackground()
             }
         }
     }
 
     /**
      * Preloads and caches prayer times for all predefined cities and Iraqi districts in background
-     * Ensures all cities are immediately available and displayed instantly when selected
+     * without overwriting already cached cities or the active global cache.
      */
     suspend fun preloadAllCitiesInBackground() = withContext(Dispatchers.IO) {
         for (city in PredefinedCities.list) {
             try {
-                val fallback = PrayerCalculator.calculateOfflinePrayerData(
-                    city = city,
-                    calculationMethod = _calculationMethod.value,
-                    midnightMethod = _midnightMethod.value
-                )
-                saveCachedPrayerData(fallback)
+                if (!isCityCached(city)) {
+                    val fallback = PrayerCalculator.calculateOfflinePrayerData(
+                        city = city,
+                        calculationMethod = _calculationMethod.value,
+                        midnightMethod = _midnightMethod.value
+                    )
+                    saveCityOnlyCache(fallback)
+                }
             } catch (e: Exception) {
                 Log.d("PrayerRepo", "Preload exception for ${city.id}: ${e.message}")
             }
@@ -438,7 +524,7 @@ class PrayerTimesRepository(private val context: Context) {
                     }
 
                     val apiHijri = response.date?.trim()?.ifBlank { null } ?: PrayerCalculator.getFormattedHijriDate()
-                    val hijri = prefs.getString("github_hijri_override", null) ?: apiHijri
+                    val hijri = computeSyncedHijriInfo(dayOffset = _manualHijriOffset.value)?.formattedAr ?: apiHijri
                     val gregorian = PrayerCalculator.getFormattedGregorianDate()
 
                     val data = PrayerTimesData(
@@ -517,9 +603,69 @@ class PrayerTimesRepository(private val context: Context) {
             putString("city_province", city.province)
             apply()
         }
+
+        // Save location permanently into mobile app internal system files for offline recovery
+        try {
+            val file = java.io.File(context.filesDir, "saved_device_location.json")
+            val json = JSONObject().apply {
+                put("id", city.id)
+                put("nameAr", city.nameAr)
+                put("nameEn", city.nameEn)
+                put("countryAr", city.countryAr)
+                put("latitude", city.latitude)
+                put("longitude", city.longitude)
+                put("timezone", city.timezone)
+                put("isHolyCity", city.isHolyCity)
+                put("province", city.province)
+                put("savedAt", System.currentTimeMillis())
+            }
+            file.writeText(json.toString(), Charsets.UTF_8)
+            Log.d("PrayerRepo", "Saved device location to file: ${file.absolutePath}")
+        } catch (e: Exception) {
+            Log.e("PrayerRepo", "Failed to write saved_device_location.json: ${e.message}")
+        }
+    }
+
+    fun loadSavedCityFromFile(): CityLocation? {
+        return try {
+            val file = java.io.File(context.filesDir, "saved_device_location.json")
+            if (file.exists()) {
+                val json = JSONObject(file.readText(Charsets.UTF_8))
+                CityLocation(
+                    id = json.getString("id"),
+                    nameAr = json.getString("nameAr"),
+                    nameEn = json.getString("nameEn"),
+                    countryAr = json.getString("countryAr"),
+                    latitude = json.getDouble("latitude"),
+                    longitude = json.getDouble("longitude"),
+                    timezone = json.getString("timezone"),
+                    isHolyCity = json.optBoolean("isHolyCity", false),
+                    province = json.optString("province", "")
+                )
+            } else null
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    fun restoreSavedLocation(): CityLocation {
+        val saved = loadSavedCityFromFile() ?: loadSavedCity()
+        selectCity(saved)
+        return saved
+    }
+
+    fun isCityCached(city: CityLocation): Boolean {
+        val prefix = "cache_${city.id}_"
+        return prefs.contains("${prefix}fajir")
     }
 
     private fun loadSavedCity(): CityLocation {
+        // Try internal system file first for reliable persistence across restarts & offline
+        val fileCity = loadSavedCityFromFile()
+        if (fileCity != null) {
+            return fileCity
+        }
+
         val id = prefs.getString("city_id", null) ?: return PredefinedCities.defaultCity
         val nameAr = prefs.getString("city_name_ar", "كربلاء المقدسة") ?: "كربلاء المقدسة"
         val nameEn = prefs.getString("city_name_en", "Karbala") ?: "Karbala"
@@ -547,6 +693,25 @@ class PrayerTimesRepository(private val context: Context) {
             isHolyCity = isHoly,
             province = province
         )
+    }
+
+    private fun saveCityOnlyCache(data: PrayerTimesData) {
+        val prefix = "cache_${data.city.id}_"
+        prefs.edit().apply {
+            putString("${prefix}fajir", data.fajir)
+            putString("${prefix}sunrise", data.sunrise)
+            putString("${prefix}doher", data.doher)
+            putString("${prefix}asr", data.asr)
+            putString("${prefix}sunset", data.sunset)
+            putString("${prefix}maghrib", data.maghrib)
+            putString("${prefix}isha", data.isha)
+            putString("${prefix}midnight", data.midnight)
+            putString("${prefix}hijri", data.hijriDate)
+            putString("${prefix}gregorian", data.gregorianDate)
+            putString("${prefix}powered", data.poweredBy)
+            putLong("${prefix}time", data.lastUpdated)
+            apply()
+        }
     }
 
     private fun saveCachedPrayerData(data: PrayerTimesData) {
@@ -593,8 +758,8 @@ class PrayerTimesRepository(private val context: Context) {
         val isha = prefs.getString("${prefix}isha", null) ?: prefs.getString("cached_isha", "19:35") ?: "19:35"
         val midnight = prefs.getString("${prefix}midnight", null) ?: prefs.getString("cached_midnight", "23:15") ?: "23:15"
         val cachedHijri = prefs.getString("${prefix}hijri", null) ?: prefs.getString("cached_hijri", "مركز الكفيل للثقافة والإعلام") ?: "مركز الكفيل للثقافة والإعلام"
-        val hijri = prefs.getString("github_hijri_override", null) ?: cachedHijri
-        val gregorian = prefs.getString("${prefix}gregorian", null) ?: prefs.getString("cached_gregorian", PrayerCalculator.getFormattedGregorianDate()) ?: PrayerCalculator.getFormattedGregorianDate()
+        val hijri = computeSyncedHijriInfo(dayOffset = _manualHijriOffset.value)?.formattedAr ?: cachedHijri
+        val gregorian = PrayerCalculator.getFormattedGregorianDate()
         val powered = prefs.getString("${prefix}powered", null) ?: prefs.getString("cached_powered", "حقيبة المؤمن") ?: "حقيبة المؤمن"
         val lastUpdated = prefs.getLong("${prefix}time", prefs.getLong("cached_time", System.currentTimeMillis()))
 
@@ -616,18 +781,36 @@ class PrayerTimesRepository(private val context: Context) {
     }
 
     fun isNotificationEnabled(prayerName: String): Boolean {
+        // Exclude Sunrise, Sunset, and Midnight completely from notifications and alerts
+        if (prayerName == PrayerType.SUNRISE.name || prayerName == PrayerType.SUNSET.name || prayerName == PrayerType.MIDNIGHT.name) {
+            return false
+        }
         val defaultVal = when (prayerName) {
-            PrayerType.FAJR.name, PrayerType.DHUHR.name, PrayerType.MAGHRIB.name -> true
+            PrayerType.FAJR.name, PrayerType.DHUHR.name, PrayerType.ASR.name, PrayerType.MAGHRIB.name, PrayerType.ISHA.name -> true
             else -> false
         }
         return prefs.getBoolean("notif_$prayerName", defaultVal)
     }
 
     fun setNotificationEnabled(prayerName: String, enabled: Boolean) {
+        if (prayerName == PrayerType.SUNRISE.name || prayerName == PrayerType.SUNSET.name || prayerName == PrayerType.MIDNIGHT.name) {
+            prefs.edit().putBoolean("notif_$prayerName", false).apply()
+            return
+        }
         prefs.edit().putBoolean("notif_$prayerName", enabled).apply()
     }
 
     fun getPrayerAlarmConfig(prayerType: PrayerType): PrayerCustomAlarmConfig {
+        if (prayerType == PrayerType.SUNRISE || prayerType == PrayerType.SUNSET || prayerType == PrayerType.MIDNIGHT) {
+            return PrayerCustomAlarmConfig(
+                prayerType = prayerType,
+                isEnabled = false,
+                soundMode = AdhanSoundMode.VIBRATE_ONLY,
+                specificMuezzinId = null,
+                repeatMode = AlarmRepeatMode.ONCE,
+                customVolumePercent = 0
+            )
+        }
         val isEnabled = isNotificationEnabled(prayerType.name)
         val soundModeId = prefs.getString("alarm_sound_${prayerType.name}", AdhanSoundMode.FULL_ADHAN.id)
         val soundMode = AdhanSoundMode.fromId(soundModeId)
@@ -670,89 +853,73 @@ class PrayerTimesRepository(private val context: Context) {
     }
 
     suspend fun syncHijriDateWithGithub(isAuto: Boolean = false, notifyUser: Boolean = false): Result<String> = withContext(Dispatchers.IO) {
+        var connection: HttpURLConnection? = null
         try {
             val owner = _githubRepoOwner.value.ifBlank { "moshraheem-sudo" }
             val repo = _githubRepoName.value.ifBlank { "hijri" }
-            val url = URL("https://raw.githubusercontent.com/$owner/$repo/main/hijri.json")
-            val connection = url.openConnection() as HttpURLConnection
-            connection.connectTimeout = 7000
-            connection.readTimeout = 7000
-            connection.requestMethod = "GET"
-            connection.setRequestProperty("User-Agent", "AndroidPrayerTimesApp/1.0")
+            val timestamp = System.currentTimeMillis()
+            val url = URL("https://raw.githubusercontent.com/$owner/$repo/main/hijri.json?t=$timestamp")
+            connection = (url.openConnection() as HttpURLConnection).apply {
+                connectTimeout = 8000
+                readTimeout = 8000
+                requestMethod = "GET"
+                useCaches = false
+                setRequestProperty("Cache-Control", "no-cache, no-store, must-revalidate")
+                setRequestProperty("Pragma", "no-cache")
+                setRequestProperty("Expires", "0")
+                setRequestProperty("User-Agent", "AndroidPrayerTimesApp/1.0")
+            }
 
             if (connection.responseCode == 200) {
-                val reader = BufferedReader(InputStreamReader(connection.inputStream))
-                val response = StringBuilder()
-                var line: String?
-                while (reader.readLine().also { line = it } != null) {
-                    response.append(line)
-                }
-                reader.close()
-
-                val json = JSONObject(response.toString())
-                val hDay = json.getInt("hijri_day")
-                val hMonth = json.getInt("hijri_month")
-                val hYear = json.getInt("hijri_year")
-                val anchorDateStr = json.getString("gregorian_anchor_date")
-
-                val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.ENGLISH)
-                val anchorDate = sdf.parse(anchorDateStr) ?: Date()
-                val today = Date()
-
-                val diffMillis = today.time - anchorDate.time
-                val diffDays = (diffMillis / (1000 * 60 * 60 * 24)).toInt()
-
-                var currentDay = hDay + diffDays
-                var currentMonth = hMonth
-                var currentYear = hYear
-
-                while (currentDay > 30) {
-                    currentDay -= 30
-                    currentMonth++
-                    if (currentMonth > 12) {
-                        currentMonth = 1
-                        currentYear++
+                val response = BufferedReader(InputStreamReader(connection.inputStream)).use { reader ->
+                    val sb = StringBuilder()
+                    var line: String?
+                    while (reader.readLine().also { line = it } != null) {
+                        sb.append(line)
                     }
-                }
-                while (currentDay <= 0) {
-                    currentDay += 30
-                    currentMonth--
-                    if (currentMonth < 1) {
-                        currentMonth = 12
-                        currentYear--
-                    }
+                    sb.toString()
                 }
 
-                val monthsAr = arrayOf(
-                    "محرم الحرام", "صفر الخير", "ربيع الأول", "ربيع الثاني",
-                    "جمادى الأولى", "جمادى الآخرة", "رجب الأصب", "شعبان المعظم",
-                    "رمضان المبارك", "شوال المكرم", "ذو القعدة", "ذو الحجة"
-                )
-                val monthName = monthsAr.getOrElse(currentMonth - 1) { "هجري" }
-                val formattedHijri = "$currentDay $monthName $currentYear هـ"
+                val nowDate = Date()
+                val previousCanonicalHijri = computeSyncedHijriInfo(dayOffset = 0, date = nowDate)?.formattedAr
+                val snapshot = HijriCalendarHelper.parseHijriJson(response, nowDate)
+                val canonicalResolved = HijriCalendarHelper.resolveHijriDate(snapshot, nowDate, manualDayOffset = 0)
+                val displayResolved = HijriCalendarHelper.resolveHijriDate(snapshot, nowDate, manualDayOffset = _manualHijriOffset.value)
 
-                val prevOverride = prefs.getString("github_hijri_override", null)
-                val isDateChanged = prevOverride != formattedHijri
+                val nowTime = System.currentTimeMillis()
+                val todayKey = HijriCalendarHelper.formatLocalGregorianKey(nowDate)
+                _lastHijriSyncTime.value = nowTime
+                prefs.edit()
+                    .putInt("github_hijri_day", snapshot.day)
+                    .putInt("github_hijri_month", snapshot.month)
+                    .putInt("github_hijri_year", snapshot.year)
+                    .putString("github_hijri_month_name", snapshot.monthNameAr)
+                    .putString("github_hijri_ref_date", snapshot.refGregorianDate)
+                    .putString("github_hijri_override", displayResolved.formattedAr)
+                    .putBoolean("has_initial_hijri_sync", true)
+                    .putLong("last_hijri_sync_time", nowTime)
+                    .putString("last_hijri_sync_gregorian_day", todayKey)
+                    .apply()
 
                 val currentData = _prayerTimesData.value
                 if (currentData != null) {
-                    val updatedData = currentData.copy(hijriDate = formattedHijri)
+                    val updatedData = applyCustomAdjustments(
+                        currentData.copy(gregorianDate = PrayerCalculator.getFormattedGregorianDate(nowDate))
+                    )
                     _prayerTimesData.value = updatedData
                     saveCachedPrayerData(updatedData)
                 }
-                
-                val nowTime = System.currentTimeMillis()
-                _lastHijriSyncTime.value = nowTime
-                prefs.edit()
-                    .putString("github_hijri_override", formattedHijri)
-                    .putLong("last_hijri_sync_time", nowTime)
-                    .apply()
 
-                if (notifyUser || (isAuto && isDateChanged)) {
+                if (HijriCalendarHelper.isCriticalTransitionDay(canonicalResolved.day)) {
+                    HijriSyncScheduler.scheduleCriticalDayFollowUp(context)
+                }
+
+                val isDateCorrected = previousCanonicalHijri != null && previousCanonicalHijri != canonicalResolved.formattedAr
+                if (notifyUser || (isAuto && isDateCorrected)) {
                     try {
                         com.example.utils.PrayerNotificationHelper.showHijriSyncNotification(
                             context = context,
-                            hijriDate = formattedHijri,
+                            hijriDate = displayResolved.formattedAr,
                             isAuto = isAuto
                         )
                     } catch (eNotif: Exception) {
@@ -760,12 +927,22 @@ class PrayerTimesRepository(private val context: Context) {
                     }
                 }
 
-                Result.success(formattedHijri)
+                Result.success(displayResolved.formattedAr)
             } else {
+                if (!hasCompletedInitialHijriSync() || isCriticalHijriTransitionDay()) {
+                    HijriSyncScheduler.scheduleImmediateSync(context)
+                }
                 Result.failure(Exception("HTTP ${connection.responseCode}"))
             }
         } catch (e: Exception) {
+            if (!hasCompletedInitialHijriSync() || isCriticalHijriTransitionDay()) {
+                HijriSyncScheduler.scheduleImmediateSync(context)
+            }
             Result.failure(e)
+        } finally {
+            try {
+                connection?.disconnect()
+            } catch (_: Exception) {}
         }
     }
 

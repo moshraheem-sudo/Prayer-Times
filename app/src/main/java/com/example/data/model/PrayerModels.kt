@@ -8,7 +8,13 @@ enum class PrayerType(val arName: String, val enName: String) {
     SUNSET("الغروب", "Sunset"),
     MAGHRIB("صلاة المغرب", "Maghrib"),
     ISHA("صلاة العشاء", "Isha"),
-    MIDNIGHT("منتصف الليل", "Midnight")
+    MIDNIGHT("منتصف الليل", "Midnight");
+
+    val isObligatoryPrayer: Boolean
+        get() = this == FAJR || this == DHUHR || this == ASR || this == MAGHRIB || this == ISHA
+
+    val isNonPrayerTime: Boolean
+        get() = this == SUNRISE || this == SUNSET || this == MIDNIGHT
 }
 
 data class PrayerTimeDisplay(

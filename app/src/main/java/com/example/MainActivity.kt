@@ -15,6 +15,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Text
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.animation.*
 import androidx.compose.ui.Alignment
 import com.example.ui.components.AdhanNowPlayingBanner
@@ -26,11 +28,15 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.LayoutDirection
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.data.model.AppLanguage
@@ -98,6 +104,7 @@ fun PrayerApp(
     val gpsStatusMessage by viewModel.gpsStatusMessage.collectAsState()
     val appUpdateStatus by viewModel.updateStatus.collectAsStateWithLifecycle()
     var showUpdateDialog by remember { mutableStateOf(false) }
+    var showGpsEnableDialog by remember { mutableStateOf(false) }
 
     val adhanPlaybackState by com.example.utils.AdhanAudioService.playbackState.collectAsStateWithLifecycle()
     val isAdhanPlaying = adhanPlaybackState.status == com.example.utils.AdhanPlaybackStatus.PLAYING
@@ -122,9 +129,7 @@ fun PrayerApp(
                 permissions[Manifest.permission.ACCESS_COARSE_LOCATION] == true
         if (granted) {
             if (!LocationHelper.isLocationServiceEnabled(context)) {
-                android.widget.Toast.makeText(context, AppStrings.gpsToastEnable(appLanguage), android.widget.Toast.LENGTH_LONG).show()
-                LocationHelper.openLocationSettings(context)
-                viewModel.setGpsStatusMessage(AppStrings.gpsStatusOpeningSettings(appLanguage))
+                showGpsEnableDialog = true
             } else {
                 viewModel.locateViaGps(context, forceRefresh = true)
             }
@@ -144,9 +149,7 @@ fun PrayerApp(
                 )
             )
         } else if (!LocationHelper.isLocationServiceEnabled(context)) {
-            android.widget.Toast.makeText(context, AppStrings.gpsToastEnable(appLanguage), android.widget.Toast.LENGTH_LONG).show()
-            LocationHelper.openLocationSettings(context)
-            viewModel.setGpsStatusMessage(AppStrings.gpsStatusDisabled(appLanguage))
+            showGpsEnableDialog = true
         } else {
             viewModel.locateViaGps(context, forceRefresh = true)
         }
@@ -168,6 +171,19 @@ fun PrayerApp(
             // Do not automatically locate on launch to respect user's manual selection and avoid inaccurate IP fallbacks
         }
         viewModel.checkForAppUpdates()
+    }
+
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                viewModel.onAppForegrounded()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
     }
 
     Scaffold(
@@ -208,7 +224,9 @@ fun PrayerApp(
                         gpsStatusMessage = gpsStatusMessage,
                         onGpsClick = onTriggerGps,
                         onRefreshClick = { viewModel.refreshPrayerTimes() },
-                        onToggleNotification = { viewModel.toggleNotification(it) }
+                        onToggleNotification = { viewModel.toggleNotification(it) },
+                        onCitySelect = { viewModel.changeCity(it, context) },
+                        onRestoreSavedLocation = { viewModel.restoreSavedLocation(context) }
                     )
                 }
                 AppTab.SETTINGS -> {
@@ -339,6 +357,46 @@ fun PrayerApp(
             },
             onRetryCheck = {
                 viewModel.checkForAppUpdates()
+            }
+        )
+    }
+
+    if (showGpsEnableDialog) {
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { showGpsEnableDialog = false },
+            title = {
+                Text(
+                    text = "تأكيد تفعيل خدمة الموقع (GPS)",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold
+                )
+            },
+            text = {
+                Text(
+                    text = "يرجى تفعيل خدمة الموقع (GPS) في جهازك لتحديد مواقيت الصلاة بدقة لموقعك الفعلي وحفظه في ملفات الجهاز للعمل دائماً حتى عند انقطاع الإنترنت.",
+                    style = MaterialTheme.typography.bodyMedium
+                )
+            },
+            confirmButton = {
+                androidx.compose.material3.Button(
+                    onClick = {
+                        showGpsEnableDialog = false
+                        LocationHelper.openLocationSettings(context)
+                        viewModel.setGpsStatusMessage(AppStrings.gpsStatusOpeningSettings(appLanguage))
+                    }
+                ) {
+                    Text("فتح إعدادات الموقع")
+                }
+            },
+            dismissButton = {
+                androidx.compose.material3.OutlinedButton(
+                    onClick = {
+                        showGpsEnableDialog = false
+                        viewModel.restoreSavedLocation(context)
+                    }
+                ) {
+                    Text("استخدام الموقع المحفوظ")
+                }
             }
         )
     }

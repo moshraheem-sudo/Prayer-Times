@@ -32,13 +32,18 @@ class PrayerAlarmReceiver : BroadcastReceiver() {
                 return
             }
 
+            // Exclude non-prayer times (Sunrise, Sunset, Midnight) entirely from notifications and Azan alerts
+            if (prayerType == PrayerType.SUNRISE || prayerType == PrayerType.SUNSET || prayerType == PrayerType.MIDNIGHT) {
+                return
+            }
+
             val timeStr = intent.getStringExtra(EXTRA_TIME_STR) ?: ""
             val cityName = intent.getStringExtra(EXTRA_CITY_NAME) ?: "مدينتك"
             val repeatIteration = intent.getIntExtra(EXTRA_REPEAT_ITERATION, 0)
             val offsetMinutes = intent.getIntExtra(EXTRA_OFFSET_MINUTES, 0)
 
             // Check if user enabled notifications and get per-prayer custom config
-            val repository = PrayerTimesRepository(context)
+            val repository = PrayerTimesRepository(context, autoStartSync = false)
             val config = repository.getPrayerAlarmConfig(prayerType)
 
             if (config.isEnabled) {
@@ -121,6 +126,12 @@ class PrayerAlarmReceiver : BroadcastReceiver() {
                     prayerData = cachedData,
                     cityName = city.nameAr
                 )
+                if ((prayerType == PrayerType.MAGHRIB || prayerType == PrayerType.FAJR) &&
+                    (repository.githubAutoSyncEnabled.value || !repository.hasCompletedInitialHijriSync()) &&
+                    repository.isCriticalHijriTransitionDay()
+                ) {
+                    HijriSyncScheduler.scheduleImmediateSync(context)
+                }
             }
         } finally {
             try {

@@ -23,14 +23,18 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccessTime
+import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Bedtime
 import androidx.compose.material.icons.filled.Brightness5
 import androidx.compose.material.icons.filled.Brightness6
 import androidx.compose.material.icons.filled.CalendarToday
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.CloudDone
 import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.GpsFixed
@@ -41,7 +45,10 @@ import androidx.compose.material.icons.filled.MyLocation
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.NotificationsOff
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.WbSunny
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -49,9 +56,15 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -92,10 +105,13 @@ fun HomeScreen(
     onGpsClick: () -> Unit,
     onRefreshClick: () -> Unit = {},
     onToggleNotification: (PrayerType) -> Unit,
+    onCitySelect: (CityLocation) -> Unit = {},
+    onRestoreSavedLocation: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val isAr = currentLanguage == AppLanguage.ARABIC
     val cityName = if (isAr) selectedCity.nameAr else selectedCity.nameEn
+    var showCitySelectionDialog by remember { mutableStateOf(false) }
 
     LazyColumn(
         modifier = modifier
@@ -151,7 +167,10 @@ fun HomeScreen(
                             verticalAlignment = Alignment.CenterVertically,
                             modifier = Modifier
                                 .weight(1f)
+                                .clip(RoundedCornerShape(12.dp))
+                                .clickable { showCitySelectionDialog = true }
                                 .padding(vertical = 4.dp)
+                                .testTag("home_city_selector_row")
                         ) {
                             Box(
                                 modifier = Modifier
@@ -179,14 +198,29 @@ fun HomeScreen(
 
                             Spacer(modifier = Modifier.width(12.dp))
 
-                            // Clean City Name
+                            // Clean City Name with Dropdown Arrow
                             Column {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(
+                                        text = cityName,
+                                        style = MaterialTheme.typography.titleLarge,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        color = AppColors.current.textTitle,
+                                        fontSize = 20.sp
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Icon(
+                                        imageVector = Icons.Default.ArrowDropDown,
+                                        contentDescription = "Select City",
+                                        tint = AppColors.current.tealAccentLight,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                }
                                 Text(
-                                    text = cityName,
-                                    style = MaterialTheme.typography.titleLarge,
-                                    fontWeight = FontWeight.ExtraBold,
-                                    color = AppColors.current.textTitle,
-                                    fontSize = 22.sp
+                                    text = if (isAr) "انقر لاختيار مدينة أو استعادة المحفوظة" else "Tap to change city or restore saved",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = AppColors.current.textSubtle,
+                                    fontSize = 10.sp
                                 )
                             }
                         }
@@ -633,7 +667,8 @@ fun HomeScreen(
                     type = PrayerType.SUNSET,
                     rawTime = prayerData.sunset,
                     emoji = "🌇",
-                    icon = Icons.Default.Brightness6
+                    icon = Icons.Default.Brightness6,
+                    isMuted = true
                 ),
                 PrayerCardInfo(
                     type = PrayerType.MAGHRIB,
@@ -653,7 +688,8 @@ fun HomeScreen(
                     type = PrayerType.MIDNIGHT,
                     rawTime = prayerData.midnight,
                     emoji = "🌌",
-                    icon = Icons.Default.AccessTime
+                    icon = Icons.Default.AccessTime,
+                    isMuted = true
                 )
             )
 
@@ -677,6 +713,16 @@ fun HomeScreen(
         item {
             Spacer(modifier = Modifier.height(16.dp))
         }
+    }
+
+    if (showCitySelectionDialog) {
+        CitySelectionDialog(
+            currentLanguage = currentLanguage,
+            selectedCity = selectedCity,
+            onCitySelect = onCitySelect,
+            onRestoreSavedLocation = onRestoreSavedLocation,
+            onDismiss = { showCitySelectionDialog = false }
+        )
     }
 }
 
@@ -820,19 +866,185 @@ fun SophisticatedPrayerItemCard(
                         )
                     }
 
-                    IconButton(
-                        onClick = onToggleNotification,
-                        modifier = Modifier.size(32.dp)
-                    ) {
-                        Icon(
-                            imageVector = if (isNotificationEnabled) Icons.Default.Notifications else Icons.Default.NotificationsOff,
-                            contentDescription = "Notification Toggle",
-                            tint = if (isNotificationEnabled) (if (isNext) AppColors.current.tealAccentLight else AppColors.current.textMuted) else AppColors.current.textSubtle.copy(alpha = 0.4f),
-                            modifier = Modifier.size(18.dp)
-                        )
+                    if (prayerInfo.type.isObligatoryPrayer) {
+                        IconButton(
+                            onClick = onToggleNotification,
+                            modifier = Modifier.size(32.dp)
+                        ) {
+                            Icon(
+                                imageVector = if (isNotificationEnabled) Icons.Default.Notifications else Icons.Default.NotificationsOff,
+                                contentDescription = "Notification Toggle",
+                                tint = if (isNotificationEnabled) (if (isNext) AppColors.current.tealAccentLight else AppColors.current.textMuted) else AppColors.current.textSubtle.copy(alpha = 0.4f),
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
                     }
                 }
             }
         }
     }
+}
+
+@Composable
+fun CitySelectionDialog(
+    currentLanguage: AppLanguage,
+    selectedCity: CityLocation,
+    onCitySelect: (CityLocation) -> Unit,
+    onRestoreSavedLocation: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    val isAr = currentLanguage == AppLanguage.ARABIC
+    var searchQuery by remember { mutableStateOf("") }
+    val filteredCities = remember(searchQuery) {
+        if (searchQuery.isBlank()) {
+            com.example.data.model.PredefinedCities.list
+        } else {
+            com.example.data.model.PredefinedCities.list.filter {
+                it.nameAr.contains(searchQuery, ignoreCase = true) ||
+                it.nameEn.contains(searchQuery, ignoreCase = true) ||
+                it.province.contains(searchQuery, ignoreCase = true) ||
+                it.countryAr.contains(searchQuery, ignoreCase = true)
+            }
+        }
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(
+                    text = if (isAr) "اختيار مدينة أو قضاء الصلاة" else "Select Prayer Location",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold
+                )
+                Text(
+                    text = if (isAr) "يُحفظ موقعك في ملفات الهاتف ليعمل دائماً بدون إنترنت" else "Location is saved locally for offline usage",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = AppColors.current.textSubtle
+                )
+            }
+        },
+        text = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(420.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                // Restore Saved Location Button
+                Button(
+                    onClick = {
+                        onRestoreSavedLocation()
+                        onDismiss()
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.MyLocation,
+                        contentDescription = "Restore",
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = if (isAr) "العودة إلى موقعي المحفوظ في الجهاز" else "Return to Saved Device Location",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 13.sp
+                    )
+                }
+
+                // Search field
+                OutlinedTextField(
+                    value = searchQuery,
+                    onValueChange = { searchQuery = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    placeholder = {
+                        Text(
+                            text = if (isAr) "ابحث عن محافظة، قضاء، أو عتبة مقدسة..." else "Search city, district, shrine...",
+                            fontSize = 12.sp
+                        )
+                    },
+                    leadingIcon = {
+                        Icon(
+                            imageVector = Icons.Default.Search,
+                            contentDescription = "Search",
+                            tint = AppColors.current.tealAccentLight
+                        )
+                    },
+                    trailingIcon = {
+                        if (searchQuery.isNotEmpty()) {
+                            IconButton(onClick = { searchQuery = "" }) {
+                                Icon(imageVector = Icons.Default.Close, contentDescription = "Clear")
+                            }
+                        }
+                    },
+                    singleLine = true,
+                    shape = RoundedCornerShape(12.dp)
+                )
+
+                // Cities list
+                LazyColumn(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    items(filteredCities) { city ->
+                        val isSelected = city.id == selectedCity.id
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(
+                                    if (isSelected) AppColors.current.tealGlow20
+                                    else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
+                                )
+                                .border(
+                                    1.dp,
+                                    if (isSelected) AppColors.current.tealAccentLight else Color.Transparent,
+                                    RoundedCornerShape(10.dp)
+                                )
+                                .clickable {
+                                    onCitySelect(city)
+                                    onDismiss()
+                                }
+                                .padding(horizontal = 12.dp, vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = if (isAr) city.nameAr else city.nameEn,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                    color = if (isSelected) AppColors.current.tealAccentLight else AppColors.current.textTitle
+                                )
+                                if (city.province.isNotEmpty()) {
+                                    Text(
+                                        text = "${city.province} • ${city.countryAr}",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = AppColors.current.textSubtle,
+                                        fontSize = 10.sp
+                                    )
+                                }
+                            }
+                            if (isSelected) {
+                                Icon(
+                                    imageVector = Icons.Default.Check,
+                                    contentDescription = "Selected",
+                                    tint = AppColors.current.tealAccentLight,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text(if (isAr) "إغلاق" else "Close")
+            }
+        }
+    )
 }

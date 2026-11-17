@@ -44,6 +44,15 @@
             android:enabled="true"
             android:exported="false" />
 
+        <receiver
+            android:name=".utils.AdhanStopReceiver"
+            android:enabled="true"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.example.action.STOP_ADHAN" />
+            </intent-filter>
+        </receiver>
+
         <service
             android:name=".utils.AdhanAudioService"
             android:enabled="true"

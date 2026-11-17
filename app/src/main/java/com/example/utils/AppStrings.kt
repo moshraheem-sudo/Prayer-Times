@@ -222,8 +222,8 @@ object AppStrings {
     }
 
     fun githubAutoSyncSubtitle(lang: AppLanguage): String = when (lang) {
-        AppLanguage.ARABIC -> "التحقق التلقائي عند تشغيل التطبيق وتحديث التاريخ في الخلفية بدون رنين"
-        AppLanguage.ENGLISH -> "Check for updates on app launch and update silently in background"
+        AppLanguage.ARABIC -> "مزامنة تلقائية عند التنصيب والتشغيل وفي الخلفية، وبشكل مكثف أيام ٢٨، ٢٩، ٣٠، و١ من كل شهر هجري"
+        AppLanguage.ENGLISH -> "Auto-sync on first install, launch, background, and intensively on days 28, 29, 30, and 1 of each Hijri month"
     }
 
     fun githubTriggerDispatchButton(lang: AppLanguage, isSending: Boolean): String = when {

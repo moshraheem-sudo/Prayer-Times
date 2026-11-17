@@ -73,7 +73,25 @@ class AdhanAudioService : Service(), MediaPlayer.OnPreparedListener,
         private val _playbackState = MutableStateFlow(AdhanPlaybackState())
         val playbackState: StateFlow<AdhanPlaybackState> = _playbackState.asStateFlow()
 
+        @Volatile
+        private var activeInstance: AdhanAudioService? = null
+
         fun isPlaying(): Boolean = _playbackState.value.status == AdhanPlaybackStatus.PLAYING
+
+        /**
+         * Immediately stops playback synchronously if service is active.
+         * Used by AdhanStopReceiver when user swipes away notification or clicks stop.
+         */
+        fun stopCurrentPlayback() {
+            try {
+                activeInstance?.let { service ->
+                    service.stopPlayback()
+                    service.stopSelf()
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error in stopCurrentPlayback: ${e.message}")
+            }
+        }
 
         fun startAdhan(
             context: Context,
@@ -156,6 +174,7 @@ class AdhanAudioService : Service(), MediaPlayer.OnPreparedListener,
 
     override fun onCreate() {
         super.onCreate()
+        activeInstance = this
         audioManager = getSystemService(Context.AUDIO_SERVICE) as? AudioManager
         acquireWakeLock()
         createNotificationChannel()
@@ -574,14 +593,14 @@ class AdhanAudioService : Service(), MediaPlayer.OnPreparedListener,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
-        val stopIntent = Intent(this, AdhanAudioService::class.java).apply {
+        val stopBroadcastIntent = Intent(this, AdhanStopReceiver::class.java).apply {
             action = ACTION_STOP_ADHAN
         }
 
-        val stopPendingIntent = PendingIntent.getService(
+        val stopPendingIntent = PendingIntent.getBroadcast(
             this,
-            1,
-            stopIntent,
+            9002,
+            stopBroadcastIntent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
@@ -611,7 +630,7 @@ class AdhanAudioService : Service(), MediaPlayer.OnPreparedListener,
                 "⏹ إيقاف الأذان",
                 stopPendingIntent
             )
-            .setOngoing(true)
+            .setOngoing(false)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .setColor(0xFF14B8A6.toInt())
@@ -622,6 +641,9 @@ class AdhanAudioService : Service(), MediaPlayer.OnPreparedListener,
 
     override fun onDestroy() {
         stopPlayback()
+        if (activeInstance == this) {
+            activeInstance = null
+        }
         super.onDestroy()
     }
 }

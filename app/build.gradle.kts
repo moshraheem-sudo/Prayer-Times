@@ -17,8 +17,8 @@ android {
     applicationId = "com.aistudio.kafeelprayer.lxrkty"
     minSdk = 24
     targetSdk = 36
-    versionCode = 15000
-    versionName = "1.50.0"
+    versionCode = 17000
+    versionName = "1.70.0"
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
   }
@@ -117,6 +117,7 @@ dependencies {
   implementation(libs.logging.interceptor)
   implementation(libs.moshi.kotlin)
   implementation(libs.okhttp)
+  implementation(libs.androidx.work.runtime.ktx)
   // implementation(libs.play.services.location)
   implementation(libs.retrofit)
   testImplementation(libs.androidx.compose.ui.test.junit4)

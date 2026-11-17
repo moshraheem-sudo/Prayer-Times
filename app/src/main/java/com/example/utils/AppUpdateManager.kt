@@ -97,6 +97,7 @@ object AppUpdateManager {
                     .url(REPO_API_URL)
                     .header("User-Agent", "PrayerTimesApp/${currentVersionName}")
                     .header("Accept", "application/vnd.github.v3+json")
+                    .header("Cache-Control", "no-cache")
                     .build()
 
                 val response = try {
@@ -175,7 +176,8 @@ object AppUpdateManager {
     private fun checkFallbackVersion(currentVersionCode: Int, currentVersionName: String): UpdateCheckStatus? {
         try {
             val req = Request.Builder()
-                .url(FALLBACK_RAW_VERSION_URL)
+                .url("$FALLBACK_RAW_VERSION_URL?t=${System.currentTimeMillis()}")
+                .header("Cache-Control", "no-cache")
                 .build()
             val resp = httpClient.newCall(req).execute()
             if (!resp.isSuccessful) return null

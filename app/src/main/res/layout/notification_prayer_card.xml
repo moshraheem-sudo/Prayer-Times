@@ -28,7 +28,7 @@
             android:maxLines="1"
             android:singleLine="true"
             android:text="الفجر"
-            android:textColor="?android:attr/textColorPrimary"
+            android:textColor="@color/notification_text_primary"
             android:textSize="10.5sp"
             android:textStyle="bold" />
 
@@ -42,7 +42,7 @@
             android:maxLines="1"
             android:singleLine="true"
             android:text="04:13 ص"
-            android:textColor="?android:attr/textColorSecondary"
+            android:textColor="@color/notification_text_secondary"
             android:textSize="9.5sp" />
     </LinearLayout>
 
@@ -63,7 +63,7 @@
             android:maxLines="1"
             android:singleLine="true"
             android:text="الشروق"
-            android:textColor="?android:attr/textColorPrimary"
+            android:textColor="@color/notification_text_primary"
             android:textSize="10.5sp"
             android:textStyle="bold" />
 
@@ -77,7 +77,7 @@
             android:maxLines="1"
             android:singleLine="true"
             android:text="05:37 ص"
-            android:textColor="?android:attr/textColorSecondary"
+            android:textColor="@color/notification_text_secondary"
             android:textSize="9.5sp" />
     </LinearLayout>
 
@@ -98,7 +98,7 @@
             android:maxLines="1"
             android:singleLine="true"
             android:text="الظهر"
-            android:textColor="?android:attr/textColorPrimary"
+            android:textColor="@color/notification_text_primary"
             android:textSize="10.5sp"
             android:textStyle="bold" />
 
@@ -112,7 +112,7 @@
             android:maxLines="1"
             android:singleLine="true"
             android:text="11:55 ص"
-            android:textColor="?android:attr/textColorSecondary"
+            android:textColor="@color/notification_text_secondary"
             android:textSize="9.5sp" />
     </LinearLayout>
 
@@ -133,7 +133,7 @@
             android:maxLines="1"
             android:singleLine="true"
             android:text="المغرب"
-            android:textColor="?android:attr/textColorPrimary"
+            android:textColor="@color/notification_text_primary"
             android:textSize="10.5sp"
             android:textStyle="bold" />
 
@@ -147,7 +147,7 @@
             android:maxLines="1"
             android:singleLine="true"
             android:text="06:27 م"
-            android:textColor="?android:attr/textColorSecondary"
+            android:textColor="@color/notification_text_secondary"
             android:textSize="9.5sp" />
     </LinearLayout>
 

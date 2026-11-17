@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Dark / Night Mode Notification Colors -->
+    <color name="notification_text_primary">#FFF3F4F6</color>
+    <color name="notification_text_secondary">#FF9CA3AF</color>
+    <color name="notification_accent">#FF2DD4BF</color>
+    <color name="notification_accent_bg">#292DD4BF</color>
+</resources>

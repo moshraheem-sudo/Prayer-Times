@@ -30,7 +30,7 @@ object PrayerNotificationHelper {
 
     const val PRE_ADHAN_CHANNEL_ID = "prayer_pre_reminders_channel_v1"
     const val PRE_ADHAN_CHANNEL_NAME = "تنبيهات الاستعداد للصلاة (قبل الأذان)"
-    const val PRE_ADHAN_CHANNEL_DESC = "تنبيهات عادية تسبق موعد الأذان بـ 10 دقائق ثم 5 دقائق للاستعداد والوضوء"
+    const val PRE_ADHAN_CHANNEL_DESC = "تنبيهات عادية تسبق موعد الأذان بنصف ساعة و10 دقائق و5 دقائق للاستعداد والوضوء"
 
     const val ONGOING_CHANNEL_ID = "prayer_ongoing_times_bar_v1"
     const val ONGOING_CHANNEL_NAME = "شريط مواقيت الصلاة الدائم"
@@ -140,6 +140,7 @@ object PrayerNotificationHelper {
 
         val title = "اقترب موعد أذان ${prayerType.arName}"
         val body = when (remainingMinutes) {
+            30 -> "يتبقى نصف ساعة (30 دقيقة) على أذان ${prayerType.arName} في $cityDisplay • حان وقت الاستعداد والتهيؤ للصلاة"
             10 -> "يتبقى 10 دقائق لرفع أذان ${prayerType.arName} في $cityDisplay • حان وقت الاستعداد والوضوء"
             5 -> "يتبقى 5 دقائق لرفع أذان ${prayerType.arName} في $cityDisplay • تهيأ للصلاة المباركة"
             else -> "يتبقى $remainingMinutes دقائق لرفع أذان ${prayerType.arName} في $cityDisplay"
@@ -149,7 +150,12 @@ object PrayerNotificationHelper {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
         }
 
-        val iterIndex = if (remainingMinutes == 10) 1 else 2
+        val iterIndex = when (remainingMinutes) {
+            30 -> 6
+            10 -> 1
+            5 -> 2
+            else -> 0
+        }
         val pendingIntent = PendingIntent.getActivity(
             context,
             prayerType.ordinal * 10 + iterIndex + 5000,
@@ -264,7 +270,7 @@ object PrayerNotificationHelper {
     }
 
     fun showTestNotification(context: Context) {
-        val repo = com.example.data.repository.PrayerTimesRepository(context)
+        val repo = com.example.data.repository.PrayerTimesRepository(context, autoStartSync = false)
         // Directly preview the Adhan audio cleanly without any conflicting alert ringtones
         AdhanAudioService.previewMuezzin(context, repo.selectedMuezzin.value)
     }

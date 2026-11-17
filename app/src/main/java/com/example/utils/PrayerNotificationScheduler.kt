@@ -30,17 +30,20 @@ object PrayerNotificationScheduler {
         }
 
         val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as? AlarmManager ?: return
-        val repo = PrayerTimesRepository(context)
+        val repo = PrayerTimesRepository(context, autoStartSync = false)
 
+        // Explicitly cancel any alarms for non-prayer astronomical times (Sunrise, Sunset, Midnight)
+        cancelPrayerAlarm(context, alarmManager, PrayerType.SUNRISE)
+        cancelPrayerAlarm(context, alarmManager, PrayerType.SUNSET)
+        cancelPrayerAlarm(context, alarmManager, PrayerType.MIDNIGHT)
+
+        // Only the 5 obligatory prayers have Azan and prayer notifications
         val prayerTimeMap = listOf(
             PrayerType.FAJR to prayerData.fajir,
-            PrayerType.SUNRISE to prayerData.sunrise,
             PrayerType.DHUHR to prayerData.doher,
             PrayerType.ASR to prayerData.asr,
-            PrayerType.SUNSET to prayerData.sunset,
             PrayerType.MAGHRIB to prayerData.maghrib,
-            PrayerType.ISHA to prayerData.isha,
-            PrayerType.MIDNIGHT to prayerData.midnight
+            PrayerType.ISHA to prayerData.isha
         )
 
         for ((prayerType, timeStr) in prayerTimeMap) {
@@ -49,14 +52,6 @@ object PrayerNotificationScheduler {
                 cancelPrayerAlarm(context, alarmManager, prayerType)
                 continue
             }
-
-            val isAdhanPrayer = prayerType in listOf(
-                PrayerType.FAJR,
-                PrayerType.DHUHR,
-                PrayerType.ASR,
-                PrayerType.MAGHRIB,
-                PrayerType.ISHA
-            )
 
             // Primary alarm at exact prayer time (offset 0: pure Adhan audio without ringing)
             scheduleSinglePrayerAlarm(
@@ -69,29 +64,39 @@ object PrayerNotificationScheduler {
                 offsetMinutes = 0
             )
 
-            // Pre-Adhan notifications: regular gentle notifications 10 minutes and 5 minutes before Adhan
-            if (isAdhanPrayer) {
-                // 10 minutes before
-                scheduleSinglePrayerAlarm(
-                    context = context,
-                    alarmManager = alarmManager,
-                    prayerType = prayerType,
-                    timeStr = timeStr,
-                    cityName = cityName,
-                    repeatIteration = 1,
-                    offsetMinutes = -10
-                )
-                // 5 minutes before
-                scheduleSinglePrayerAlarm(
-                    context = context,
-                    alarmManager = alarmManager,
-                    prayerType = prayerType,
-                    timeStr = timeStr,
-                    cityName = cityName,
-                    repeatIteration = 2,
-                    offsetMinutes = -5
-                )
-            }
+            // Pre-Adhan notifications:
+            // 1. 30 minutes before prayer (تنبيه للصلاة قبل نصف ساعة)
+            scheduleSinglePrayerAlarm(
+                context = context,
+                alarmManager = alarmManager,
+                prayerType = prayerType,
+                timeStr = timeStr,
+                cityName = cityName,
+                repeatIteration = 6,
+                offsetMinutes = -30
+            )
+
+            // 2. 10 minutes before Adhan
+            scheduleSinglePrayerAlarm(
+                context = context,
+                alarmManager = alarmManager,
+                prayerType = prayerType,
+                timeStr = timeStr,
+                cityName = cityName,
+                repeatIteration = 1,
+                offsetMinutes = -10
+            )
+
+            // 3. 5 minutes before Adhan
+            scheduleSinglePrayerAlarm(
+                context = context,
+                alarmManager = alarmManager,
+                prayerType = prayerType,
+                timeStr = timeStr,
+                cityName = cityName,
+                repeatIteration = 2,
+                offsetMinutes = -5
+            )
 
             // Additional repetitions / follow-up alarms based on AlarmRepeatMode
             when (config.repeatMode) {
@@ -219,7 +224,7 @@ object PrayerNotificationScheduler {
         alarmManager: AlarmManager,
         prayerType: PrayerType
     ) {
-        for (i in 0..5) {
+        for (i in 0..8) {
             val intent = Intent(context, PrayerAlarmReceiver::class.java).apply {
                 action = "com.example.ACTION_PRAYER_ALARM_${prayerType.name}_$i"
             }
@@ -241,7 +246,7 @@ object PrayerNotificationScheduler {
         alarmManager: AlarmManager,
         prayerType: PrayerType
     ) {
-        for (i in 3..5) {
+        for (i in 3..4) {
             val intent = Intent(context, PrayerAlarmReceiver::class.java).apply {
                 action = "com.example.ACTION_PRAYER_ALARM_${prayerType.name}_$i"
             }

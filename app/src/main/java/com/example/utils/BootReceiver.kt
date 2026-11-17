@@ -12,7 +12,7 @@ class BootReceiver : BroadcastReceiver() {
             intent.action == Intent.ACTION_MY_PACKAGE_REPLACED ||
             intent.action == "android.intent.action.QUICKBOOT_POWERON"
         ) {
-            val repository = PrayerTimesRepository(context)
+            val repository = PrayerTimesRepository(context, autoStartSync = false)
             val cachedData = repository.prayerTimesData.value
             val city = repository.selectedCity.value
             if (cachedData != null) {
@@ -21,6 +21,10 @@ class BootReceiver : BroadcastReceiver() {
                     prayerData = cachedData,
                     cityName = city.nameAr
                 )
+            }
+            if (repository.githubAutoSyncEnabled.value || !repository.hasCompletedInitialHijriSync()) {
+                HijriSyncScheduler.schedulePeriodicSync(context)
+                HijriSyncScheduler.scheduleImmediateSync(context)
             }
         }
     }
